@@ -1,4 +1,15 @@
-﻿\documentclass[12pt,a4paper]{ctexart}
+﻿% ============================================================
+%  需求分析文档（Software Requirements Specification, SRS）
+%  编译器：XeLaTeX
+%  编码：UTF-8
+%
+%  【使用方式】
+%  1. 全局搜索“TODO”定位所有待填项
+%  2. Ctrl+S 保存自动编译，右侧预览 PDF
+%  3. 每人负责一个 section，写完 git commit + push
+% ============================================================
+
+\documentclass[12pt,a4paper]{ctexart}
 
 % ============ 页面设置 ============
 \usepackage[margin=2.5cm]{geometry}
@@ -30,9 +41,11 @@
     backgroundcolor=\color{gray!5}
 }
 
-% ============ 标题信息 ============
-\title{\heiti 需求分析文档 \\[6pt] \large —— XX系统}
-\author{\songti 小组成员：张三、李四、王五}
+% ============================================================
+%  TODO-0: 替换以下三项为你们的真实信息
+% ============================================================
+\title{\heiti 需求分析文档 \\[6pt] \large —— XX系统}          % ← 项目名称
+\author{\songti 小组成员：张三、李四、王五}                     % ← 成员姓名
 \date{\today}
 
 \begin{document}
@@ -45,10 +58,16 @@
 \tableofcontents
 \newpage
 
-% ============ 正文 ============
-
+% ============================================================
+%  1. 引言
+%  写作要点：给读者（老师/助教/甲方）一个快速概览
+%  - 这个项目要解决什么问题？
+%  - 为什么要做？（市场/课程要求/用户痛点）
+%  - 文档范围（写什么不写什么）
+% ============================================================
 \section{引言}
 \subsection{编写目的}
+% TODO-1: 明确你们做的到底是什么系统，比如“校园二手交易平台”、“在线考试系统”
 本文档旨在明确XX系统的功能需求和非功能需求，为后续的设计、开发和测试阶段提供依据。
 
 \textbf{预期读者}包括：
@@ -60,9 +79,11 @@
 \end{itemize}
 
 \subsection{项目背景}
+% TODO-1: 写1段话描述：项目产生的背景（课程设计/实际需求）、要解决的核心问题
 简要描述项目产生的背景、要解决的问题以及项目的目标和范围。
 
 \subsection{术语定义}
+% TODO-1: 补充你们项目特有的缩写/术语（如 B/S, MVC, REST, JWT 等）
 \begin{table}[H]
 \centering
 \caption{术语与缩写说明}
@@ -77,11 +98,17 @@ CRUD & Create, Read, Update, Delete & 增删改查操作 \\
 \end{tabular}
 \end{table}
 
+% ============================================================
+%  2. 系统概述
+%  写作要点：从宏观角度描述系统——谁用、跑在哪、要达成什么
+% ============================================================
 \section{系统概述}
 \subsection{系统目标}
+% TODO-2: 写1-2段话，描述系统上线后要达成的核心目标（比如“让学生方便买卖闲置物品”）
 用1-2段话描述系统要达成的核心目标。
 
 \subsection{用户角色}
+% TODO-2: 根据你们的系统调整角色（比如“买家/卖家/平台管理员”）
 \begin{table}[H]
 \centering
 \caption{用户角色定义}
@@ -97,6 +124,7 @@ CRUD & Create, Read, Update, Delete & 增删改查操作 \\
 \end{table}
 
 \subsection{运行环境}
+% TODO-2: 填你们实际选用的技术栈
 \begin{itemize}
     \item \textbf{操作系统}：Windows 10/11、Linux、macOS
     \item \textbf{数据库}：MySQL 8.0 / PostgreSQL
@@ -104,6 +132,13 @@ CRUD & Create, Read, Update, Delete & 增删改查操作 \\
     \item \textbf{前端框架}：待定
 \end{itemize}
 
+% ============================================================
+%  3. 功能需求（本文档最核心章节）
+%  写法：
+%  - 每个模块拆解为子功能，每项标编号 + 优先级 + 输入/输出
+%  - 编号建议格式：FUNC-模块缩写-序号
+%  - 一句话定义需求：作为<角色>，我想<做什么>，以便<达成什么目的>
+% ============================================================
 \section{功能需求}
 \subsection{功能模块总览}
 \begin{figure}[H]
@@ -112,6 +147,8 @@ CRUD & Create, Read, Update, Delete & 增删改查操作 \\
 \caption{系统功能模块图}
 \end{figure}
 
+% ---------- 示例模块：用户管理 ----------
+% 保留了完整写法作为模板，你们照着补其他模块
 \subsection{模块一：用户管理}
 \subsubsection{用户注册}
 \begin{itemize}
@@ -133,11 +170,23 @@ CRUD & Create, Read, Update, Delete & 增删改查操作 \\
     \item \textbf{输出}：登录成功 → 进入主页；登录失败 → 提示错误
 \end{itemize}
 
+% TODO-3: 往下补你们的核心业务模块，参考上面用户管理的写法
+% 常见模块举例：商品管理、订单管理、搜索/筛选、支付、消息通知、数据统计
 \subsection{模块二：核心业务（待补充）}
 根据项目实际需求在此处补充核心业务功能模块。
 
+\subsection{模块三：后台管理（待补充）}
+根据项目实际需求在此处补充后台管理功能模块。
+
+% ============================================================
+%  4. 非功能需求
+%  写作要点：非功能需求 = 系统“品质属性”，不是具体功能
+%  包括：性能、安全、可用性、可维护性、可扩展性
+%  每一项要有可量化的指标（数字），不能只写“快”“安全”
+% ============================================================
 \section{非功能需求}
 \subsection{性能需求}
+% TODO-4: 根据实际场景调整数值
 \begin{itemize}
     \item 页面响应时间不超过\underline{2秒}
     \item 支持\underline{100}名用户同时在线
@@ -145,6 +194,7 @@ CRUD & Create, Read, Update, Delete & 增删改查操作 \\
 \end{itemize}
 
 \subsection{安全性需求}
+% TODO-4: 如果是课程项目，SQL注入/XSS/TLS至少覆盖三点即可
 \begin{itemize}
     \item 密码使用bcrypt等算法加密存储
     \item 敏感数据传输使用HTTPS
@@ -166,11 +216,19 @@ CRUD & Create, Read, Update, Delete & 增删改查操作 \\
     \item 提供完整的API文档
 \end{itemize}
 
+% ============================================================
+%  5. 用例描述
+%  写法：
+%  - 用例图：画清楚 Actor 和 Use Case 的关系
+%  - 用例规约表：每个核心功能写一个，重点是基本流+异常流
+% ============================================================
 \section{用例描述}
 \subsection{用例图}
+% TODO-5: 用 draw.io / ProcessOn 画用例图，导出为 images/usecase.png
 （用例图待补充，可使用TikZ-UML或外部工具绘制）
 
 \subsection{用例规约示例}
+% 下面是一个完整用例规约模板，复制这个表格补其他用例
 \begin{table}[H]
 \centering
 \caption{用例UC-001：用户注册}
@@ -204,8 +262,18 @@ CRUD & Create, Read, Update, Delete & 增删改查操作 \\
 \end{tabular}
 \end{table}
 
+% TODO-5: 为每个核心功能复制上面的表格，补 UC-002, UC-003...
+
+% ============================================================
+%  6. 数据需求
+%  写法：
+%  - 列出所有数据实体（对应数据库表）
+%  - 每个实体列出核心字段 + 类型
+%  - ER图用 draw.io 或者 MySQL Workbench 导出
+% ============================================================
 \section{数据需求}
 \subsection{数据实体}
+% TODO-6: 补充所有数据库表的字段定义
 列出系统涉及的核心数据实体及其关系，例如：
 \begin{itemize}
     \item \textbf{用户}：UserID, Username, Email, Password, Role, CreatedAt
@@ -213,9 +281,16 @@ CRUD & Create, Read, Update, Delete & 增删改查操作 \\
 \end{itemize}
 
 \subsection{ER图}
+% TODO-6: 用工具画出 ER 图，插入 images/er.png
 （ER图待补充）
 
+% ============================================================
+%  7. 验收标准
+%  写法：可验证的、二元的判定条件（通过/不通过）
+%  不要说“系统好用”，要说“用户可以3步内完成注册”
+% ============================================================
 \section{验收标准}
+% TODO-7: 根据实际项目调整
 \begin{enumerate}
     \item 所有高优先级功能通过测试
     \item 性能指标达到非功能需求要求
@@ -224,14 +299,19 @@ CRUD & Create, Read, Update, Delete & 增删改查操作 \\
     \item 源代码通过代码审查
 \end{enumerate}
 
+% ============================================================
+%  附录
+% ============================================================
 \section{附录}
 \subsection{参考文献}
+% TODO-附录: 补充课程教材和参考资料
 \begin{enumerate}
     \item Ian Sommerville, \textit{Software Engineering}, 10th Edition, Pearson, 2015.
     \item 相关课程资料
 \end{enumerate}
 
 \subsection{修订历史}
+% 每次修改后在此追加一行
 \begin{table}[H]
 \centering
 \caption{文档修订历史}
