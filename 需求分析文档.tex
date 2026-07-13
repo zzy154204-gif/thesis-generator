@@ -1,0 +1,247 @@
+﻿\documentclass[12pt,a4paper]{ctexart}
+
+% ============ 页面设置 ============
+\usepackage[margin=2.5cm]{geometry}
+
+% ============ 数学公式 ============
+\usepackage{amsmath,amssymb}
+
+% ============ 图片支持 ============
+\usepackage{graphicx}
+\usepackage{float}
+
+% ============ 表格 ============
+\usepackage{booktabs}
+\usepackage{array}
+
+% ============ 超链接 ============
+\usepackage[hidelinks]{hyperref}
+
+% ============ 代码高亮 ============
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+    basicstyle=\small\ttfamily,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    backgroundcolor=\color{gray!5}
+}
+
+% ============ 标题信息 ============
+\title{\heiti 需求分析文档 \\[6pt] \large —— XX系统}
+\author{\songti 小组成员：张三、李四、王五}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+\newpage
+
+% ============ 目录 ============
+\tableofcontents
+\newpage
+
+% ============ 正文 ============
+
+\section{引言}
+\subsection{编写目的}
+本文档旨在明确XX系统的功能需求和非功能需求，为后续的设计、开发和测试阶段提供依据。
+
+\textbf{预期读者}包括：
+\begin{itemize}
+    \item 项目开发团队
+    \item 项目管理人员
+    \item 系统最终用户
+    \item 测试人员
+\end{itemize}
+
+\subsection{项目背景}
+简要描述项目产生的背景、要解决的问题以及项目的目标和范围。
+
+\subsection{术语定义}
+\begin{table}[H]
+\centering
+\caption{术语与缩写说明}
+\begin{tabular}{lll}
+\toprule
+\textbf{术语/缩写} & \textbf{全称} & \textbf{说明} \\
+\midrule
+SRS & Software Requirements Specification & 软件需求规格说明 \\
+UML & Unified Modeling Language & 统一建模语言 \\
+CRUD & Create, Read, Update, Delete & 增删改查操作 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{系统概述}
+\subsection{系统目标}
+用1-2段话描述系统要达成的核心目标。
+
+\subsection{用户角色}
+\begin{table}[H]
+\centering
+\caption{用户角色定义}
+\begin{tabular}{lll}
+\toprule
+\textbf{角色} & \textbf{职责} & \textbf{权限级别} \\
+\midrule
+管理员   & 系统配置、用户管理、数据维护     & 最高 \\
+普通用户 & 核心业务操作                   & 中等 \\
+访客     & 浏览公开信息                   & 最低 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{运行环境}
+\begin{itemize}
+    \item \textbf{操作系统}：Windows 10/11、Linux、macOS
+    \item \textbf{数据库}：MySQL 8.0 / PostgreSQL
+    \item \textbf{后端框架}：待定
+    \item \textbf{前端框架}：待定
+\end{itemize}
+
+\section{功能需求}
+\subsection{功能模块总览}
+\begin{figure}[H]
+\centering
+（系统功能模块图待补充）
+\caption{系统功能模块图}
+\end{figure}
+
+\subsection{模块一：用户管理}
+\subsubsection{用户注册}
+\begin{itemize}
+    \item \textbf{编号}：FUNC-USER-001
+    \item \textbf{优先级}：高
+    \item \textbf{描述}：新用户通过填写用户名、邮箱、密码完成注册
+    \item \textbf{输入}：用户名（3-20字符）、邮箱（合法格式）、密码（8位以上）
+    \item \textbf{输出}：注册成功 → 跳转登录页；注册失败 → 显示错误提示
+    \item \textbf{前置条件}：用户名和邮箱未被占用
+    \item \textbf{后置条件}：用户记录写入数据库，发送验证邮件
+\end{itemize}
+
+\subsubsection{用户登录}
+\begin{itemize}
+    \item \textbf{编号}：FUNC-USER-002
+    \item \textbf{优先级}：高
+    \item \textbf{描述}：已注册用户通过用户名/邮箱 + 密码登录系统
+    \item \textbf{输入}：用户名或邮箱、密码
+    \item \textbf{输出}：登录成功 → 进入主页；登录失败 → 提示错误
+\end{itemize}
+
+\subsection{模块二：核心业务（待补充）}
+根据项目实际需求在此处补充核心业务功能模块。
+
+\section{非功能需求}
+\subsection{性能需求}
+\begin{itemize}
+    \item 页面响应时间不超过\underline{2秒}
+    \item 支持\underline{100}名用户同时在线
+    \item 数据库查询响应时间不超过\underline{500ms}
+\end{itemize}
+
+\subsection{安全性需求}
+\begin{itemize}
+    \item 密码使用bcrypt等算法加密存储
+    \item 敏感数据传输使用HTTPS
+    \item 防止SQL注入、XSS、CSRF攻击
+    \item 用户操作日志记录
+\end{itemize}
+
+\subsection{可用性需求}
+\begin{itemize}
+    \item 系统7×24小时可用，全年可用性 $\ge$ 99\%
+    \item 界面简洁直观，符合用户操作习惯
+    \item 提供清晰的错误提示和帮助文档
+\end{itemize}
+
+\subsection{可维护性需求}
+\begin{itemize}
+    \item 代码遵循统一编码规范
+    \item 关键模块有单元测试覆盖
+    \item 提供完整的API文档
+\end{itemize}
+
+\section{用例描述}
+\subsection{用例图}
+（用例图待补充，可使用TikZ-UML或外部工具绘制）
+
+\subsection{用例规约示例}
+\begin{table}[H]
+\centering
+\caption{用例UC-001：用户注册}
+\begin{tabular}{lp{11cm}}
+\toprule
+\textbf{用例编号} & UC-001 \\
+\textbf{用例名称} & 用户注册 \\
+\textbf{参与者}   & 未注册用户 \\
+\textbf{前置条件} & 用户进入注册页面 \\
+\textbf{后置条件} & 用户账号创建成功 \\
+\midrule
+\multicolumn{2}{l}{\textbf{基本事件流：}} \\
+\multicolumn{2}{l}{\parbox{11cm}{
+1. 用户点击"注册"按钮 \\
+2. 系统显示注册表单 \\
+3. 用户填写用户名、邮箱、密码 \\
+4. 用户点击"提交" \\
+5. 系统验证输入合法性 \\
+6. 系统创建用户账号 \\
+7. 系统发送验证邮件 \\
+8. 系统提示注册成功 \\
+}} \\
+\midrule
+\multicolumn{2}{l}{\textbf{异常事件流：}} \\
+\multicolumn{2}{l}{\parbox{11cm}{
+3a. 用户名已被占用 → 提示更换用户名 \\
+3b. 邮箱格式不合法 → 提示正确格式 \\
+3c. 密码强度不足 → 提示密码要求 \\
+}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{数据需求}
+\subsection{数据实体}
+列出系统涉及的核心数据实体及其关系，例如：
+\begin{itemize}
+    \item \textbf{用户}：UserID, Username, Email, Password, Role, CreatedAt
+    \item \textbf{其他实体}：根据项目补充
+\end{itemize}
+
+\subsection{ER图}
+（ER图待补充）
+
+\section{验收标准}
+\begin{enumerate}
+    \item 所有高优先级功能通过测试
+    \item 性能指标达到非功能需求要求
+    \item 安全测试无高危漏洞
+    \item 用户文档和API文档完整
+    \item 源代码通过代码审查
+\end{enumerate}
+
+\section{附录}
+\subsection{参考文献}
+\begin{enumerate}
+    \item Ian Sommerville, \textit{Software Engineering}, 10th Edition, Pearson, 2015.
+    \item 相关课程资料
+\end{enumerate}
+
+\subsection{修订历史}
+\begin{table}[H]
+\centering
+\caption{文档修订历史}
+\begin{tabular}{llll}
+\toprule
+\textbf{版本} & \textbf{日期} & \textbf{修订人} & \textbf{说明} \\
+\midrule
+v0.1 & \today & 小组 & 初稿 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
