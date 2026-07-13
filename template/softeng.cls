@@ -1,4 +1,4 @@
-% softeng.cls 软件工程文档统一模板类文件
+﻿% softeng.cls 软件工程文档统一模板类文件
 \NeedsTeXFormat{LaTeX2e}
 \ProvidesClass{softeng}[2026/07/11 Software Engineering Standard Doc Template]
 
@@ -100,7 +100,7 @@
             成员： & 41234567 张三 \\ \cline{2-2}
         \end{tabular}\\[2cm]
         \vfill
-        \zihao{-4}实训课程软件工程文档
+        \zihao{-4}实训课程软件工程文档 \par \today
     \end{titlepage}
 }
 
