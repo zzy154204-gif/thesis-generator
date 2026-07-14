@@ -31,3 +31,19 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### 本地配置（每人自己的，不提交）###
+application-local.properties
+application-local.yml
+src/main/resources/application-local.properties
+src/main/resources/application-local.yml
+
+### 上传文件目录 ###
+uploads/
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Log ###
+*.log
