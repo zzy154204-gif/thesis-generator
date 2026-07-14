@@ -1,5 +1,6 @@
 package com.example.thesisgenerator.service;
 
+import com.example.thesisgenerator.common.BusinessException;
 import com.example.thesisgenerator.entity.Reference;
 import com.example.thesisgenerator.repository.ReferenceRepository;
 import lombok.RequiredArgsConstructor;
@@ -53,11 +54,14 @@ public class ReferenceService {
             ref.setUrl(updated.getUrl());
             ref.setAccessDate(updated.getAccessDate());
             return referenceRepository.save(ref);
-        }).orElseThrow(() -> new RuntimeException("参考文献不存在，id: " + id));
+        }).orElseThrow(() -> new BusinessException(404, "参考文献不存在，id: " + id));
     }
 
     /** 删除文献 */
     public void delete(Long id) {
+        if (!referenceRepository.existsById(id)) {
+            throw new BusinessException(404, "参考文献不存在，id: " + id);
+        }
         referenceRepository.deleteById(id);
     }
 
@@ -79,7 +83,7 @@ public class ReferenceService {
     public String formatById(Long id) {
         return referenceRepository.findById(id)
                 .map(formatter::format)
-                .orElseThrow(() -> new RuntimeException("参考文献不存在，id: " + id));
+                .orElseThrow(() -> new BusinessException(404, "参考文献不存在，id: " + id));
     }
 
     /**

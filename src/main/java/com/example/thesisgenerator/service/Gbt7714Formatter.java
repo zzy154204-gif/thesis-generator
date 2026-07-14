@@ -48,8 +48,15 @@ public class Gbt7714Formatter {
         StringBuilder sb = new StringBuilder();
         sb.append(ref.getAuthors()).append(". ");
         sb.append(ref.getTitle()).append("[J]. ");
-        sb.append(ref.getJournal()).append(", ");
-        sb.append(ref.getYear());
+
+        if (ref.getJournal() != null && !ref.getJournal().isBlank()) {
+            sb.append(ref.getJournal());
+        }
+        sb.append(", ");
+
+        if (ref.getYear() != null) {
+            sb.append(ref.getYear());
+        }
 
         if (ref.getVolume() != null && !ref.getVolume().isEmpty()) {
             sb.append(", ").append(ref.getVolume());
@@ -77,8 +84,13 @@ public class Gbt7714Formatter {
         if (ref.getAddress() != null && !ref.getAddress().isEmpty()) {
             sb.append(ref.getAddress()).append(": ");
         }
-        sb.append(ref.getPublisher()).append(", ");
-        sb.append(ref.getYear()).append(".");
+        if (ref.getPublisher() != null && !ref.getPublisher().isBlank()) {
+            sb.append(ref.getPublisher()).append(", ");
+        }
+        if (ref.getYear() != null) {
+            sb.append(ref.getYear());
+        }
+        sb.append(".");
         return sb.toString();
     }
 
@@ -90,8 +102,12 @@ public class Gbt7714Formatter {
         StringBuilder sb = new StringBuilder();
         sb.append(ref.getAuthors()).append(". ");
         sb.append(ref.getTitle()).append("[C]// ");
-        sb.append(ref.getConference()).append(". ");
-        sb.append(ref.getYear());
+        if (ref.getConference() != null && !ref.getConference().isBlank()) {
+            sb.append(ref.getConference()).append(". ");
+        }
+        if (ref.getYear() != null) {
+            sb.append(ref.getYear());
+        }
 
         if (ref.getPages() != null && !ref.getPages().isEmpty()) {
             sb.append(": ").append(ref.getPages());
@@ -108,8 +124,13 @@ public class Gbt7714Formatter {
         StringBuilder sb = new StringBuilder();
         sb.append(ref.getAuthors()).append(". ");
         sb.append(ref.getTitle()).append("[D]. ");
-        sb.append(ref.getInstitution()).append(", ");
-        sb.append(ref.getYear()).append(".");
+        if (ref.getInstitution() != null && !ref.getInstitution().isBlank()) {
+            sb.append(ref.getInstitution()).append(", ");
+        }
+        if (ref.getYear() != null) {
+            sb.append(ref.getYear());
+        }
+        sb.append(".");
         return sb.toString();
     }
 
@@ -121,8 +142,13 @@ public class Gbt7714Formatter {
         StringBuilder sb = new StringBuilder();
         sb.append(ref.getAuthors()).append(". ");
         sb.append(ref.getTitle()).append("[EB/OL]. ");
-        sb.append(ref.getUrl()).append(", ");
-        sb.append(ref.getAccessDate()).append(".");
+        if (ref.getUrl() != null && !ref.getUrl().isBlank()) {
+            sb.append(ref.getUrl()).append(", ");
+        }
+        if (ref.getAccessDate() != null && !ref.getAccessDate().isBlank()) {
+            sb.append(ref.getAccessDate());
+        }
+        sb.append(".");
         return sb.toString();
     }
 }

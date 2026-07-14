@@ -155,3 +155,35 @@ CREATE INDEX IF NOT EXISTS idx_thesis_status ON thesis(status);
 CREATE INDEX IF NOT EXISTS idx_section_thesis ON thesis_section(thesis_id);
 CREATE INDEX IF NOT EXISTS idx_annotation_thesis ON annotation(thesis_id);
 CREATE INDEX IF NOT EXISTS idx_review_thesis ON review_record(thesis_id);
+
+-- 独立参考文献库表（tb_ 前缀，不依赖论文ID，通用管理用）
+CREATE TABLE IF NOT EXISTS tb_reference (
+    id BIGSERIAL PRIMARY KEY,
+    authors VARCHAR(500) NOT NULL,
+    title VARCHAR(500) NOT NULL,
+    type VARCHAR(10) NOT NULL,
+    year INT,
+    journal VARCHAR(500),
+    volume VARCHAR(50),
+    issue VARCHAR(50),
+    pages VARCHAR(50),
+    publisher VARCHAR(500),
+    address VARCHAR(500),
+    conference VARCHAR(500),
+    institution VARCHAR(500),
+    url VARCHAR(1000),
+    access_date VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 独立图片资源表
+CREATE TABLE IF NOT EXISTS tb_image (
+    id BIGSERIAL PRIMARY KEY,
+    original_name VARCHAR(500) NOT NULL,
+    stored_name VARCHAR(500) NOT NULL,
+    file_path VARCHAR(1000) NOT NULL,
+    file_size BIGINT,
+    content_type VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

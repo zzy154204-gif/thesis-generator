@@ -53,7 +53,7 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Spring Security Crypto（仅用于 BCryptPasswordEncoder 等加密能力，避免启用默认 Web 安全过滤链） -->
+        <!-- Spring Security Crypto（仅用于 BCryptPasswordEncoder，避免启用默认 Web 安全过滤链） -->
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-crypto</artifactId>

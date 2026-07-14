@@ -76,7 +76,10 @@ public class ImageController {
                 .map(resource -> {
                     String contentType = "image/png";
                     try {
-                        contentType = resource.getURL().openConnection().getContentType();
+                        String detected = resource.getURL().openConnection().getContentType();
+                        if (detected != null && !detected.isBlank()) {
+                            contentType = detected;
+                        }
                     } catch (Exception ignored) {
                     }
 

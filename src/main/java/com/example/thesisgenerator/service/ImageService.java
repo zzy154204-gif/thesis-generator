@@ -90,8 +90,8 @@ public class ImageService {
         Path targetPath = this.uploadPath.resolve(storedName);
 
         // 保存文件到磁盘
-        try {
-            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+        try (java.io.InputStream in = file.getInputStream()) {
+            Files.copy(in, targetPath, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new BusinessException("文件保存失败: " + originalName);
         }
