@@ -1,16 +1,18 @@
 package com.example.thesisgenerator.controller;
 
+import com.example.thesisgenerator.common.BusinessException;
+import com.example.thesisgenerator.common.Result;
 import com.example.thesisgenerator.entity.Image;
 import com.example.thesisgenerator.service.ImageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -31,21 +33,15 @@ public class ImageController {
      * 参数: file (MultipartFile)
      */
     @PostMapping("/upload")
-    public ResponseEntity<?> upload(@RequestParam("file") MultipartFile file) {
-        try {
-            Image image = imageService.upload(file);
-            return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-                    "id", image.getId(),
-                    "originalName", image.getOriginalName(),
-                    "fileSize", image.getFileSize(),
-                    "contentType", image.getContentType(),
-                    "url", "/api/images/" + image.getId() + "/file"
-            ));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        } catch (RuntimeException e) {
-            return ResponseEntity.internalServerError().body(Map.of("error", "上传失败: " + e.getMessage()));
-        }
+    public Result<Map<String, Object>> upload(@RequestParam("file") MultipartFile file) {
+        Image image = imageService.upload(file);
+        return Result.ok(Map.of(
+                "id", image.getId(),
+                "originalName", image.getOriginalName(),
+                "fileSize", image.getFileSize(),
+                "contentType", image.getContentType(),
+                "url", "/api/images/" + image.getId() + "/file"
+        ));
     }
 
     /**
@@ -54,17 +50,19 @@ public class ImageController {
      * GET /api/images/{id}
      */
     @GetMapping("/{id}")
-    public ResponseEntity<?> getMetadata(@PathVariable Long id) {
+    public Result<Map<String, Object>> getMetadata(@PathVariable Long id) {
         return imageService.getImage(id)
-                .map(image -> ResponseEntity.ok(Map.of(
-                        "id", image.getId(),
-                        "originalName", image.getOriginalName(),
-                        "fileSize", image.getFileSize(),
-                        "contentType", image.getContentType(),
-                        "createdAt", image.getCreatedAt(),
-                        "url", "/api/images/" + image.getId() + "/file"
-                )))
-                .orElse(ResponseEntity.notFound().build());
+                .map(image -> {
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("id", image.getId());
+                    result.put("originalName", image.getOriginalName());
+                    result.put("fileSize", image.getFileSize());
+                    result.put("contentType", image.getContentType());
+                    result.put("createdAt", image.getCreatedAt() != null ? image.getCreatedAt().toString() : null);
+                    result.put("url", "/api/images/" + image.getId() + "/file");
+                    return Result.ok(result);
+                })
+                .orElse(Result.error(404, "图片不存在"));
     }
 
     /**
@@ -76,7 +74,6 @@ public class ImageController {
     public ResponseEntity<Resource> getFile(@PathVariable Long id) {
         return imageService.getFile(id)
                 .map(resource -> {
-                    // 获取 MIME 类型
                     String contentType = "image/png";
                     try {
                         contentType = resource.getURL().openConnection().getContentType();
@@ -98,8 +95,8 @@ public class ImageController {
      * DELETE /api/images/{id}
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public Result<Void> delete(@PathVariable Long id) {
         imageService.delete(id);
-        return ResponseEntity.noContent().build();
+        return Result.ok();
     }
 }

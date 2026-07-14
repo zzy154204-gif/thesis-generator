@@ -1,5 +1,6 @@
 package com.example.thesisgenerator.service;
 
+import com.example.thesisgenerator.common.BusinessException;
 import com.example.thesisgenerator.entity.Image;
 import com.example.thesisgenerator.repository.ImageRepository;
 import jakarta.annotation.PostConstruct;
@@ -52,7 +53,7 @@ public class ImageService {
         try {
             Files.createDirectories(this.uploadPath);
         } catch (IOException e) {
-            throw new RuntimeException("无法创建上传目录: " + this.uploadPath, e);
+            throw new BusinessException("无法创建上传目录: " + this.uploadPath);
         }
     }
 
@@ -65,18 +66,18 @@ public class ImageService {
     public Image upload(MultipartFile file) {
         // 校验文件是否为空
         if (file.isEmpty()) {
-            throw new IllegalArgumentException("上传文件不能为空");
+            throw new BusinessException(400, "上传文件不能为空");
         }
 
         // 校验文件类型
         String contentType = file.getContentType();
         if (contentType == null || !ALLOWED_CONTENT_TYPES.contains(contentType)) {
-            throw new IllegalArgumentException("不支持的图片类型，仅允许: jpg/png/gif/webp");
+            throw new BusinessException(400, "不支持的图片类型，仅允许: jpg/png/gif/webp");
         }
 
         // 校验文件大小
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw new IllegalArgumentException("文件大小超出限制（最大 10MB）");
+            throw new BusinessException(400, "文件大小超出限制（最大 10MB）");
         }
 
         // 生成唯一文件名（UUID 防止重名）
@@ -92,7 +93,7 @@ public class ImageService {
         try {
             Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
-            throw new RuntimeException("文件保存失败: " + originalName, e);
+            throw new BusinessException("文件保存失败: " + originalName);
         }
 
         // 保存元信息到数据库

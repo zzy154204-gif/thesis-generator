@@ -53,6 +53,12 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Spring Security（BCryptPasswordEncoder） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
         <!-- JWT -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
