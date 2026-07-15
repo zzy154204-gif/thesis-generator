@@ -1,11 +1,11 @@
-% 调用上级目录公共模板
-\documentclass{../template/softeng}
+% 软件测试报告
+\documentclass{../softeng}
 
 \begin{document}
 
-% 封面：文档名、项目名、版本、编写人、审核人、审批人、日期
+% 封面
 \doccover{软件测试报告}
-{待填写项目名称}
+{在线论文文档自动生成工具}
 {V2026.07}
 
 % 目录
@@ -14,88 +14,69 @@
 
 % 修订记录
 \begin{revrecord}
-V1.0 & 2026-07-12 & 测试编写人 & 测试负责人 & 初稿完成，搭建国标标准软件测试报告完整文档框架 \\
+V1.0 & 2026-07-21 & D & F & 初稿完成，D功能+界面测试，F性能+安全+兼容性测试 \\
 \hline
 \end{revrecord}
 
+% ===== 引言部分 =====
 \section{引言}
 \subsection{编写目的}
+本文档为在线论文文档自动生成工具软件测试报告，完整记录系统功能测试、性能测试、界面测试、兼容性测试、安全测试的执行情况和结果，作为项目验收和交付的重要依据。
 \subsection{项目背景}
+本系统为高校软件工程实训项目，由6人开发小组完成。系统提供论文模板管理、在线章节编辑、参考文献管理、DOCX/PDF导出等核心功能，服务于高校毕业论文撰写场景。
 \subsection{术语与定义}
+\begin{itemize}
+    \item SPA：Single Page Application，单页面应用
+    \item Tiptap：基于ProseMirror的富文本编辑器框架
+    \item JWT：JSON Web Token，身份认证凭证
+    \item GB/T 7714：参考文献著录规则国家标准
+\end{itemize}
 \subsection{参考资料}
+\begin{enumerate}
+    \item GB/T 9386-2008 计算机软件测试文档编制规范
+    \item 《在线论文文档自动生成工具软件需求规格说明书》V2026.07
+    \item 《在线论文文档自动生成工具概要设计说明书》V2026.07
+    \item 《在线论文文档自动生成工具详细设计说明书》V2026.07
+\end{enumerate}
 
+% ===== 测试概要 =====
 \section{测试概要}
 \subsection{测试项目概述}
+本次测试覆盖在线论文文档自动生成工具全部学生端和部分管理端功能，包括功能测试、界面测试、兼容性测试。性能测试和安全测试由成员F负责。
 \subsection{测试范围}
-\subsection{测试环境}
-\subsubsection{硬件环境}
-\subsubsection{软件环境}
-\subsubsection{网络环境}
-\subsection{测试人员与周期}
-\subsection{测试依据}
+\begin{itemize}
+    \item 学生端：账号注册登录、论文CRUD、章节在线编辑、参考文献管理、模板选择预览、DOCX/PDF导出
+    \item 界面：所有学生端页面的布局、视觉、交互、响应式适配
+    \item 兼容性：Chrome/Edge/Firefox/Safari四大主流浏览器
+\end{itemize}
 
-\section{测试内容与执行情况}
-\subsection{功能测试}
-\subsubsection{测试模块划分}
-\subsubsection{测试用例执行统计}
-\subsubsection{典型测试场景说明}
-\subsection{性能测试}
-\subsubsection{测试指标标准}
-\subsubsection{压力/并发测试执行情况}
-\subsection{兼容性测试}
-\subsubsection{浏览器兼容测试}
-\subsubsection{系统环境兼容测试}
-\subsection{安全测试}
-\subsubsection{权限校验测试}
-\subsubsection{防注入、防XSS测试}
-\subsection{界面易用性测试}
+% ===== 以下按分工引入 =====
+\input{sections/4_D_functional_test}
 
-\section{测试用例执行结果统计}
-\subsection{整体用例统计汇总}
-\subsection{各模块用例通过率统计}
-\subsection{缺陷分级统计（严重/一般/轻微/建议）}
+% ===== F的测试章节占位 =====
+\section{性能测试}
+（由F编写：压力测试、并发测试、响应时间测试）
+\section{安全测试}
+（由F编写：权限校验测试、防注入测试、防XSS测试）
+\section{兼容性测试补充}
+（由F编写：后端接口兼容性、数据库兼容性）
 
 \section{缺陷分析与问题汇总}
 \subsection{缺陷分类统计}
-\subsubsection{功能类缺陷}
-\subsubsection{性能类缺陷}
-\subsubsection{界面交互类缺陷}
-\subsubsection{安全类缺陷}
+（测试执行后汇总D和F发现的全部缺陷）
 \subsection{典型严重缺陷详情}
+（测试执行后填写）
 \subsection{未修复遗留缺陷说明}
-\subsection{缺陷产生原因分析}
+（测试执行后填写）
 
 \section{测试结论}
 \subsection{功能完整性结论}
+（测试执行后填写）
 \subsection{性能达标情况结论}
+（测试执行后填写）
 \subsection{系统安全与兼容性结论}
+（测试执行后填写）
 \subsection{上线/交付判定意见}
-
-\section{建议与改进措施}
-\subsection{程序代码优化建议}
-\subsection{业务逻辑优化建议}
-\subsection{后续迭代测试优化建议}
-
-\section{附件}
-\subsection{附件1：全部测试用例清单}
-\subsection{附件2：缺陷完整记录表}
-\subsection{附件3：性能测试监控截图与日志}
-\subsection{附件4：测试执行原始日志}
-
-% 插入测试截图/统计图表示例
-\begin{figure}[htbp]
-    \centering
-    % \includegraphics[width=0.7\textwidth]{test_stat.png}
-    \caption{测试缺陷分级统计饼图}
-\end{figure}
-
-% 示例代码/测试脚本块
-\begin{lstlisting}[language=Python]
-# 自动化测试脚本示例
-def test_login(username, password):
-    resp = request.post("/api/login", json={"username":username,"pwd":password})
-    assert resp.status_code == 200
-    return resp.json()
-\end{lstlisting}
+（测试执行后填写）
 
 \end{document}
