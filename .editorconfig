@@ -1,0 +1,40 @@
+# 统一代码格式，不管用什么 IDE 打开都一样
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.java]
+indent_size = 4
+
+[*.xml]
+indent_size = 4
+
+[*.properties]
+indent_size = 4
+
+[*.yml]
+indent_size = 2
+
+[*.json]
+indent_size = 2
+
+[*.js]
+indent_size = 2
+
+[*.ts]
+indent_size = 2
+
+[*.vue]
+indent_size = 2
+
+[*.css]
+indent_size = 2

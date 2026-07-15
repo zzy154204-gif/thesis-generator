@@ -1,0 +1,30 @@
+% 概要设计说明书
+\documentclass{../softeng}
+
+\begin{document}
+
+% 封面
+\doccover{概要设计说明书}
+{在线论文文档自动生成工具}
+{V2026.07}
+
+% 目录
+\tableofcontents
+\newpage
+
+% 修订记录
+\begin{revrecord}
+V1.0 & 2026-07-16 & B & 全组 & 初稿完成 \\
+\hline
+\end{revrecord}
+
+% ===== 以下按模块分工，每人撰写对应章节 =====
+
+\input{sections/1_A_arch}
+\input{sections/2_B_template_thesis}
+\input{sections/3_C_export}
+\input{sections/4_D_frontend_arch}
+\input{sections/5_E_frontend_interact}
+\input{sections/6_F_cache_deploy}
+
+\end{document}
