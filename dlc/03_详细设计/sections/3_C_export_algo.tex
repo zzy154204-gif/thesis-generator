@@ -1,1 +1,390 @@
-% 待填写 - 请在此文件中撰写对应章节的 LaTeX 内容
+% ============================================================
+% 3_C_export_algo.tex --- 参考文献模块 / 图片模块 / 导出模块 详细设计
+% 编写人：C  日期：2026-07-15
+% 职责：实体DDL / API规范 / 核心算法 / 业务流程
+% ============================================================
+
+\section{Reference 参考文献实体详细设计}
+
+\subsection{数据表结构}
+
+参考文献表采用独立表设计（tb\_reference前缀），不直接绑定论文ID，支持通用参考文献库管理功能。
+
+\begin{table}[htbp]
+\centering
+\caption{tb\_reference 表结构}
+\label{tab:tb_reference}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id          & BIGINT    & PK, AUTO\_INCREMENT & —      & 主键 \\
+authors     & VARCHAR(500) & NOT NULL        & —      & 作者（多作者逗号分隔）\\
+title       & VARCHAR(500) & NOT NULL        & —      & 文献标题 \\
+type        & VARCHAR(10)  & NOT NULL        & —      & 文献类型枚举（J/M/C/D/EB）\\
+year        & INT       & —                & —      & 出版年份 \\
+journal     & VARCHAR(500) & —                & —      & 刊物名称（期刊专用）\\
+volume      & VARCHAR(50)  & —                & —      & 卷号 \\
+issue       & VARCHAR(50)  & —                & —      & 期号 \\
+pages       & VARCHAR(50)  & —                & —      & 页码 \\
+publisher   & VARCHAR(500) & —                & —      & 出版社（书籍专用）\\
+address     & VARCHAR(500) & —                & —      & 出版地（书籍专用）\\
+conference  & VARCHAR(500) & —                & —      & 会议名称（会议专用）\\
+institution & VARCHAR(500) & —                & —      & 学位授予单位（学位论文专用）\\
+url         & VARCHAR(1000)& —                & —      & 访问链接（网络资源专用）\\
+access\_date & VARCHAR(100) & —                & —      & 引用日期（网络资源专用）\\
+created\_at  & TIMESTAMP  & —                & NOW()  & 创建时间 \\
+updated\_at  & TIMESTAMP  & —                & NOW()  & 更新时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{文献类型枚举定义}
+
+\begin{table}[htbp]
+\centering
+\caption{ReferenceType 枚举值}
+\label{tab:reftype}
+\begin{tabular}{llp{8cm}}
+\toprule
+\textbf{枚举值} & \textbf{中文名称} & \textbf{特有字段} \\
+\midrule
+J  & 期刊文章 & journal, volume, issue, pages \\
+M  & 专著/书籍 & publisher, address \\
+C  & 会议论文 & conference, pages \\
+D  & 学位论文 & institution \\
+EB & 网络资源 & url, access\_date \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{核心接口规范}
+
+参考文献模块提供RESTful CRUD接口，统一返回Result<T>格式：
+
+\begin{lstlisting}[language=Java,caption={ReferenceController 核心接口}]
+// 获取所有文献（按年份降序）
+GET    /api/references
+// Response: Result<List<Reference>>
+
+// 获取单条文献
+GET    /api/references/{id}
+// Response: Result<Reference> / 404
+
+// 新增文献
+POST   /api/references
+// RequestBody: Reference JSON
+// Response: Result<Reference> (201)
+
+// 更新文献
+PUT    /api/references/{id}
+// RequestBody: Reference JSON
+// Response: Result<Reference> / 404
+
+// 删除文献（存在性预检）
+DELETE /api/references/{id}
+// Response: Result<Void> / 404
+
+// 搜索
+GET    /api/references/search/author?keyword=张三
+GET    /api/references/search/title?keyword=深度学习
+
+// 获取格式化文本
+GET    /api/references/{id}/format
+// Response: Result<{ formatted: "..." }>
+
+// 获取全部格式化列表
+GET    /api/references/format/all
+// Response: Result<List<String>>
+\end{lstlisting}
+
+\subsection{GB/T 7714 格式化算法详细设计}
+
+格式化器采用策略模式实现，核心方法根据文献类型自动路由到对应的格式化方法。
+
+\begin{lstlisting}[language=Java,caption={Gbt7714Formatter 核心算法}]
+@Component
+public class Gbt7714Formatter {
+
+    public String format(Reference ref) {
+        if (ref == null) return "";
+        return switch (ref.getType()) {
+            case J  -> formatJournal(ref);
+            case M  -> formatBook(ref);
+            case C  -> formatConference(ref);
+            case D  -> formatDissertation(ref);
+            case EB -> formatElectronic(ref);
+        };
+    }
+
+    // [J] 作者. 标题[J]. 刊物, 年份, 卷(期): 页码.
+    private String formatJournal(Reference ref) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(ref.getAuthors()).append(". ");
+        sb.append(ref.getTitle()).append("[J]. ");
+        sb.append(nullToEmpty(ref.getJournal())).append(", ");
+        sb.append(ref.getYear());
+        // 卷、期、页码...
+        sb.append(".");
+        return sb.toString();
+    }
+
+    // [M] 作者. 标题[M]. 出版地: 出版社, 年份.
+    private String formatBook(Reference ref) { /* ... */ }
+
+    // [C] 作者. 标题[C]// 会议名称. 年份: 页码.
+    private String formatConference(Reference ref) { /* ... */ }
+
+    // [D] 作者. 标题[D]. 授予单位, 年份.
+    private String formatDissertation(Reference ref) { /* ... */ }
+
+    // [EB] 作者. 标题[EB/OL]. 链接, 引用日期.
+    private String formatElectronic(Reference ref) { /* ... */ }
+}
+\end{lstlisting}
+
+关键设计要点：
+\begin{enumerate}
+    \item 所有业务字段均做空值保护（null safe），避免字段为空时输出字面量"null"；
+    \item 各格式化方法独立封装，新增文献类型时仅需添加枚举值和对应私有方法，不修改现有代码（开闭原则）；
+    \item 格式化结果不含序号前缀，由调用方（导出模块）在生成列表时统一添加[1][2]序号。
+\end{enumerate}
+
+\section{Image 图片实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{tb\_image 表结构}
+\label{tab:tb_image}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id            & BIGINT    & PK, AUTO\_INCREMENT & —      & 主键 \\
+original\_name & VARCHAR(500) & NOT NULL        & —      & 原始文件名（用户上传时的名字）\\
+stored\_name   & VARCHAR(500) & NOT NULL        & —      & 存储文件名（UUID生成）\\
+file\_path     & VARCHAR(1000)& NOT NULL        & —      & 文件在磁盘上的绝对路径 \\
+file\_size     & BIGINT    & —                & —      & 文件大小（字节）\\
+content\_type  & VARCHAR(100) & —                & —      & 文件MIME类型 \\
+created\_at    & TIMESTAMP & —                & NOW()  & 上传时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{图片上传核心流程}
+
+\begin{lstlisting}[language=Java,caption={ImageService.upload() 核心流程}]
+public Image upload(MultipartFile file) {
+    // 1. 校验文件非空
+    if (file.isEmpty()) throw new BusinessException(400, "上传文件不能为空");
+
+    // 2. 校验MIME类型（仅允许 jpg/png/gif/webp）
+    String contentType = file.getContentType();
+    if (contentType == null || !ALLOWED_TYPES.contains(contentType))
+        throw new BusinessException(400, "不支持的图片类型");
+
+    // 3. 校验文件大小（最大10MB）
+    if (file.getSize() > MAX_FILE_SIZE)
+        throw new BusinessException(400, "文件大小超出限制");
+
+    // 4. UUID重命名，防止重名
+    String extension = extractExtension(file.getOriginalFilename());
+    String storedName = UUID.randomUUID() + extension;
+    Path targetPath = uploadPath.resolve(storedName);
+
+    // 5. try-with-resources 写入磁盘
+    try (InputStream in = file.getInputStream()) {
+        Files.copy(in, targetPath, REPLACE_EXISTING);
+    }
+
+    // 6. 元信息入库
+    Image image = Image.builder()
+        .originalName(file.getOriginalFilename())
+        .storedName(storedName)
+        .filePath(targetPath.toString())
+        .fileSize(file.getSize())
+        .contentType(contentType)
+        .build();
+    return imageRepository.save(image);
+}
+\end{lstlisting}
+
+\subsection{上传接口规范}
+
+\begin{lstlisting}[language=Java,caption={ImageController 上传与访问接口}]
+// 上传图片
+POST /api/images/upload
+// Content-Type: multipart/form-data
+// Body: file (MultipartFile)
+// Response(201): {
+//   "code": 200,
+//   "data": {
+//     "id": 1,
+//     "originalName": "diagram.png",
+//     "fileSize": 204800,
+//     "contentType": "image/png",
+//     "url": "/api/images/1/file"
+//   }
+// }
+
+// 获取图片元信息
+GET /api/images/{id}
+
+// 获取图片文件（浏览器可直接查看）
+GET /api/images/{id}/file
+// Response: image/png 流（inline Content-Disposition）
+
+// 删除图片（删除磁盘文件+数据库记录）
+DELETE /api/images/{id}
+\end{lstlisting}
+
+\section{文档导出模块详细设计}
+
+\subsection{总体架构}
+
+文档导出模块分为三个核心步骤：
+\begin{enumerate}
+    \item \textbf{数据准备}：从数据库读取论文完整数据，包括章节HTML内容、参考文献格式化列表、图片文件路径、模板格式配置；
+    \item \textbf{DOCX生成}：使用Apache POI XWPF组件，按模板格式逐项构建Word文档；
+    \item \textbf{PDF转换}：调用LibreOffice命令行工具，以无头模式将DOCX转换为PDF。
+\end{enumerate}
+
+\subsection{Apache POI DOCX生成算法}
+
+DOCX生成的核心流程采用XWPFDocument对象逐段构建：
+
+\begin{lstlisting}[language=Java,caption={Apache POI DOCX生成核心逻辑}]
+public void generateDocx(Thesis thesis, List<ThesisSection> sections,
+                         List<String> formattedRefs,
+                         Map<String, Path> imageMap) throws Exception {
+
+    XWPFDocument document = new XWPFDocument();
+
+    // 1. 生成封面
+    addCover(document, thesis);
+
+    // 2. 遍历章节树，逐级生成标题和内容
+    for (ThesisSection section : buildTree(sections)) {
+        // 生成章节标题（按层级设置不同样式）
+        XWPFParagraph titlePara = document.createParagraph();
+        titlePara.setAlignment(ParagraphAlignment.LEFT);
+        XWPFRun titleRun = titlePara.createRun();
+        titleRun.setText(section.getTitle());
+        titleRun.setBold(true);
+        // 一级标题二号(22pt)，二级标题三号(16pt)，正文小四(12pt)
+
+        // 解析HTML内容，提取纯文本段落
+        String htmlContent = section.getContent();
+        List<String> paragraphs = parseHtmlParagraphs(htmlContent);
+
+        for (String paraText : paragraphs) {
+            XWPFParagraph para = document.createParagraph();
+            para.setIndentationFirstLine(480); // 首行缩进2字符
+            XWPFRun run = para.createRun();
+            run.setText(paraText);
+            run.setFontFamily("宋体");
+            run.setFontSize(12);
+
+            // 解析HTML中的图片<img>标签，嵌入文档
+            List<String> imgSrcs = extractImageSources(paraText);
+            for (String imgSrc : imgSrcs) {
+                Path imgPath = imageMap.get(imgSrc);
+                if (imgPath != null) {
+                    addImageToDocument(document, imgPath);
+                }
+            }
+        }
+    }
+
+    // 3. 生成参考文献列表
+    XWPFParagraph refTitle = document.createParagraph();
+    XWPFRun refRun = refTitle.createRun();
+    refRun.setText("参考文献");
+    refRun.setBold(true);
+    refRun.setFontSize(16);
+
+    int index = 1;
+    for (String formatted : formattedRefs) {
+        XWPFParagraph refPara = document.createParagraph();
+        XWPFRun run = refPara.createRun();
+        run.setText("[" + (index++) + "] " + formatted);
+        run.setFontFamily("宋体");
+        run.setFontSize(10.5); // 五号字
+    }
+
+    // 4. 输出到文件
+    try (FileOutputStream out = new FileOutputStream(outputPath)) {
+        document.write(out);
+    }
+    document.close();
+}
+\end{lstlisting}
+
+\subsection{LibreOffice PDF转换}
+
+DOCX文件生成完成后，通过Java Runtime调用LibreOffice命令行进行PDF转换：
+
+\begin{lstlisting}[language=Java,caption={LibreOffice PDF转换命令}]
+// 转换命令
+// soffice --headless --convert-to pdf demo.docx
+
+String libreOfficePath = "C:\\Program Files\\LibreOffice\\program\\soffice.exe";
+String docxPath = "/path/to/output.docx";
+String outputDir = "/path/to/output/";
+
+ProcessBuilder pb = new ProcessBuilder(
+    libreOfficePath,
+    "--headless",
+    "--convert-to", "pdf",
+    "--outdir", outputDir,
+    docxPath
+);
+pb.redirectErrorStream(true);
+Process process = pb.start();
+int exitCode = process.waitFor();
+
+if (exitCode == 0) {
+    // 转换成功，在outputDir下生成同名.pdf文件
+} else {
+    // 转换失败，读取错误流记录日志
+}
+\end{lstlisting}
+
+关键技术要点：
+\begin{itemize}
+    \item \textbf{中文支持}：生成DOCX时必须显式设置中文字体（宋体），确保LibreOffice转换时正确渲染；
+    \item \textbf{文件隔离}：每个导出任务在独立临时目录中操作，避免并发写入冲突；
+    \item \textbf{超时控制}：设置合理的Process执行超时时间（建议120秒），超时后强制终止进程防止僵尸进程；
+    \item \textbf{异步执行}：导出操作在异步任务线程池中执行，不阻塞用户的其他操作。
+\end{itemize}
+
+\subsection{技术验证结论}
+
+经技术验证，文档导出方案已达到以下成果：
+
+\begin{table}[htbp]
+\centering
+\caption{技术验证结果汇总}
+\label{tab:verify_result}
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{验证项} & \textbf{结果} & \textbf{说明} \\
+\hline
+POI创建中文标题 & 通过 & 宋体22pt，居中加粗，中文无乱码 \\
+\hline
+POI中文正文段落 & 通过 & 宋体12pt，首行缩进2字符 \\
+\hline
+POI表格创建 & 通过 & 4×4表格，单元格内容+样式正常 \\
+\hline
+LibreOffice无头转换 & 通过 & DOCX→PDF全自动，转换后中文正常 \\
+\hline
+参考文献格式化 & 通过 & GB/T 7714五种类型均正确输出 \\
+\hline
+图片上传与访问 & 通过 & Multipart上传→本地存储→URL访问 \\
+\hline
+\end{tabular}
+\end{table}
+
+结论：Apache POI 5.x + LibreOffice无头转换的技术方案可行，可进入正式开发阶段。
