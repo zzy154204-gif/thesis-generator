@@ -1,1 +1,249 @@
-% 待填写 - 请在此文件中撰写对应章节的 LaTeX 内容
+% ============================================================
+% 2_B_template_thesis.tex --- 模板模块 + 论文模块 概要设计
+% 编写人：B  日期：2026-07-15
+% 职责：模板概要 / 论文概要 / 接口设计 / 数据结构
+% ============================================================
+
+\section{模板管理模块概要设计}
+
+\subsection{模块定位}
+
+模板管理模块是论文自动生成系统的排版基础层，位于系统三层架构中的业务逻辑层。该模块负责定义和管理论文的全部排版规范参数，包括封面样式、章节结构骨架、字体字号行距、页边距页眉页脚等。上层模块——论文撰写编辑模块（D负责）和文档导出生成模块（C负责）——均依赖模板模块提供的 JSON 配置数据进行内容渲染和格式化输出。
+
+\subsection{模块边界与依赖关系}
+
+模板管理模块的边界清晰，仅与以下模块存在依赖交互：
+
+\begin{itemize}
+    \item \textbf{依赖认证权限模块（A负责）}：模板管理的所有 API 接口均需通过 JWT Token 鉴权，仅系统管理员角色可访问。
+    \item \textbf{被论文撰写模块（D负责）调用}：学生创建论文时查询可用模板列表、选择模板版本；编辑器加载时获取模板的 chapterStructure 构建章节树。
+    \item \textbf{被文档导出模块（C负责）调用}：导出 DOCX/PDF 时读取模板的 coverFields 渲染封面、formatConfig 设置文档样式。
+\end{itemize}
+
+\subsection{模块内部结构}
+
+模板管理模块内部划分为三个子模块：
+
+\begin{enumerate}
+    \item \textbf{学院管理子模块}：提供学院信息的 CRUD 接口，为模板按学院维度分类提供基础数据支撑。
+    \item \textbf{模板管理子模块}：管理模板元数据（名称、类型、关联学院），每个模板维护一个独立的版本链。
+    \item \textbf{版本管理子模块}：管理每个模板的版本记录，存储完整的排版配置数据（三个 JSON 字段：coverFields、chapterStructure、formatConfig）。
+\end{enumerate}
+
+\subsection{核心实体E-R关系}
+
+\begin{itemize}
+    \item \textbf{College \textrightarrow Template}：一对多关系。一个学院可有多个专属模板，同时可存在通用模板（college\_id 为 NULL）。
+    \item \textbf{Template \textrightarrow TemplateVersion}：一对多关系。一个模板可有多个历史版本，其中有且仅有一个版本 is\_current 为 true。
+    \item \textbf{TemplateVersion \textrightarrow Thesis}：一对多关系。学生创建论文时选择一个模板版本作为快照，论文生成时使用该快照的配置，不受后续模板版本变更影响。
+\end{itemize}
+
+\section{学院模块接口设计}
+
+\begin{table}[htbp]
+\centering
+\caption{学院管理 RESTful API}
+\begin{tabular}{lllp{5.5cm}}
+\toprule
+\textbf{方法} & \textbf{URL} & \textbf{权限} & \textbf{说明} \\
+\midrule
+GET    & /api/colleges          & Admin & 获取全部学院列表（按 name 升序），返回 id、name、code、创建时间 \\
+POST   & /api/colleges          & Admin & 新增学院。请求体：\{ "name": "...", "code": "..." \}，code 唯一性校验 \\
+PUT    & /api/colleges/\{id\}    & Admin & 编辑学院信息（仅 name 可修改，code 创建后不可改）\\
+DELETE & /api/colleges/\{id\}    & Admin & 删除学院。删除前检查关联数据，有关联则返回错误 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{模板模块接口设计}
+
+\begin{table}[htbp]
+\centering
+\caption{模板管理 RESTful API}
+\begin{tabular}{lllp{5.5cm}}
+\toprule
+\textbf{方法} & \textbf{URL} & \textbf{权限} & \textbf{说明} \\
+\midrule
+GET    & /api/templates                     & Admin & 获取模板列表。支持查询参数 type、collegeId 筛选 \\
+POST   & /api/templates                     & Admin & 创建模板。请求体：\{ "name": "...", "type": "GRADUATION", "collegeId": 1 \}。同时创建 V1.0 版本 \\
+PUT    & /api/templates/\{id\}               & Admin & 编辑模板元数据（name、type、collegeId、enabled）。不触发版本变更 \\
+DELETE & /api/templates/\{id\}               & Admin & 删除模板。检查 thesis 表引用，有关联进行中论文则阻止删除 \\
+GET    & /api/templates/\{id\}/versions       & Admin & 获取指定模板的全部版本列表，标注当前生效版本 \\
+POST   & /api/templates/\{id\}/versions       & Admin & 创建新版本。系统自动递增版本号，复制当前版本配置为初始值 \\
+PUT    & /api/templates/\{id\}/versions/\{vid\}/activate & Admin & 激活指定版本（回滚）\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{模板版本 JSON 配置数据结构}
+
+TemplateVersion 实体通过三个 JSON 格式的 TEXT 字段存储模板的完整配置参数。
+
+\paragraph{coverFields —— 封面元素配置（JSON Array）}
+
+封面由多个元素构成，每个元素的 schema 定义如下：
+
+\begin{lstlisting}[language=Java]
+[
+  {
+    "field": "title",       // 元素标识
+    "label": "论文题目",      // 封面显示文本
+    "x": 50, "y": 30,       // 位置（页面百分比坐标）
+    "fontSize": 22,
+    "bold": true
+  },
+  {
+    "field": "date",
+    "label": "提交日期",
+    "x": 50, "y": 90,
+    "fontSize": 14,
+    "format": "yyyy年MM月dd日"
+  }
+]
+\end{lstlisting}
+
+\paragraph{chapterStructure —— 章节结构配置（JSON Array）}
+
+定义论文的章节树骨架，递归嵌套结构：
+
+\begin{lstlisting}[language=Java]
+[
+  {
+    "key": "abstract",     // 章节唯一标识（对应 ThesisSection.sectionKey）
+    "title": "摘要",        // 章节标题
+    "type": "chapter",      // chapter / section / auto（自动生成）
+    "children": [           // 子章节数组（递归同结构）
+      { "key": "abstract_cn", "title": "中文摘要", "type": "section" },
+      { "key": "abstract_en", "title": "英文摘要", "type": "section" }
+    ]
+  },
+  { "key": "toc", "title": "目录", "type": "auto" },
+  { "key": "ch1", "title": "引言", "type": "chapter", "children": [...] }
+]
+\end{lstlisting}
+
+\paragraph{formatConfig —— 排版格式配置（JSON Object）}
+
+\begin{lstlisting}[language=Java]
+{
+  "page": {
+    "size": "A4",
+    "marginTop": 2.5, "marginBottom": 2.5,
+    "marginLeft": 3.0, "marginRight": 2.5
+  },
+  "font": {
+    "body": "宋体", "bodySize": 12,
+    "heading": "黑体", "headingSize": 16
+  },
+  "spacing": { "lineHeight": 1.5, "paragraphGap": 0.5 },
+  "headerFooter": {
+    "oddHeader": "章标题",
+    "evenHeader": "论文题目",
+    "pageNumber": "第{page}页"
+  }
+}
+\end{lstlisting}
+
+\section{论文模块概要设计}
+
+\subsection{模块定位}
+
+论文模块是系统的业务核心层，管理论文从创建到生成的全生命周期。该模块与章节存取模块紧密协作：论文模块管理论文的元数据和生命周期，章节存取模块管理论文的内容数据。
+
+\subsection{论文状态机设计}
+
+\begin{table}[htbp]
+\centering
+\caption{论文状态转换规则}
+\begin{tabular}{lll}
+\toprule
+\textbf{当前状态} & \textbf{可转换目标状态} & \textbf{触发条件} \\
+\midrule
+DRAFT      & SUBMITTED   & 学生点击提交按钮，论文锁定 \\
+DRAFT      & GENERATING  & 学生点击生成文档按钮 \\
+SUBMITTED  & REVIEWED    & 教师提交批阅意见 \\
+SUBMITTED  & RETURNED    & 教师点击退回修改 \\
+RETURNED   & DRAFT       & 学生进入编辑（自动切换，解锁论文）\\
+GENERATING & COMPLETED   & 文档导出任务执行完成 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{论文锁定机制}
+
+\begin{itemize}
+    \item 论文提交时 is\_locked 自动置为 true，前端编辑器进入只读模式。
+    \item 教师退回时 is\_locked 自动置为 false，恢复编辑权限。
+    \item 文档生成中 is\_locked 为 true，前端禁用所有编辑操作。
+    \item 仅在 DRAFT 状态且 is\_locked 为 false 时，才允许调用章节内容更新接口。
+\end{itemize}
+
+\section{论文模块接口设计}
+
+\begin{table}[htbp]
+\centering
+\caption{论文管理 RESTful API}
+\begin{tabular}{lllp{5cm}}
+\toprule
+\textbf{方法} & \textbf{URL} & \textbf{权限} & \textbf{说明} \\
+\midrule
+GET    & /api/theses                & Student & 获取当前学生全部论文列表，按 updated\_at 降序 \\
+POST   & /api/theses                & Student & 创建新论文。请求体：\{ "title": "...", "templateVersionId": 3, "collegeId": 1 \}。自动创建章节记录 \\
+GET    & /api/theses/\{id\}          & Student & 获取论文详情（含章节树）\\
+PUT    & /api/theses/\{id\}          & Student & 修改论文标题（仅 DRAFT 状态）\\
+DELETE & /api/theses/\{id\}          & Student & 删除论文（仅 DRAFT 状态），级联删除章节 \\
+PUT    & /api/theses/\{id\}/submit   & Student & 提交论文：校验章节非空，改状态为 SUBMITTED，锁定 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{章节存取模块概要设计}
+
+\subsection{章节树存储模型}
+
+ThesisSection 表采用\textbf{邻接表模型}（Adjacency List）存储树形数据：
+
+\begin{itemize}
+    \item \textbf{根节点}：parent\_id 为 NULL，section\_type 为 "chapter"。
+    \item \textbf{子节点}：parent\_id 指向父章节 id，section\_type 为 "section"，可继续嵌套。
+    \item \textbf{排序}：同层级节点按 sort\_order 升序排列。
+    \item \textbf{双内容字段}：content 存储正式内容，draftContent 存储自动保存草稿。编辑器加载时优先展示 draftContent 以恢复未保存内容。
+\end{itemize}
+
+\section{章节存取接口设计}
+
+\begin{table}[htbp]
+\centering
+\caption{章节管理 RESTful API}
+\begin{tabular}{lllp{5cm}}
+\toprule
+\textbf{方法} & \textbf{URL} & \textbf{权限} & \textbf{说明} \\
+\midrule
+GET    & /api/theses/\{id\}/sections    & Student & 获取论文全部章节树（递归嵌套 JSON，按 sort\_order 排序）\\
+PUT    & /api/sections/\{id\}            & Student & 更新章节内容。请求体：\{ "content": "..." \} 或 \{ "draftContent": "..." \} \\
+PUT    & /api/sections/\{id\}/submit     & Student & 提交章节：draftContent 合并到 content，清空 draftContent \\
+POST   & /api/sections/\{id\}/auto-save  & Student & 自动保存草稿（仅更新 draftContent），每30s前端触发 \\
+PUT    & /api/sections/\{id\}/reorder    & Student & 调整章节排序 \\
+POST   & /api/theses/\{id\}/sections    & Student & 新增自定义章节 \\
+DELETE & /api/sections/\{id\}            & Student & 删除章节（级联删除子章节）\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{数据库表结构汇总}
+
+\begin{table}[htbp]
+\centering
+\caption{B 负责模块涉及的数据库表}
+\begin{tabular}{lllp{7cm}}
+\toprule
+\textbf{表名} & \textbf{对应实体} & \textbf{主键} & \textbf{核心字段} \\
+\midrule
+sys\_college & College & id BIGINT 自增 & name, code (UNIQUE), created\_at, updated\_at \\
+template & Template & id BIGINT 自增 & name, type, college\_id FK, enabled, created\_at, updated\_at \\
+template\_version & TemplateVersion & id BIGINT 自增 & template\_id FK, version\_number, is\_current, cover\_fields TEXT(JSON), chapter\_structure TEXT(JSON), format\_config TEXT(JSON), created\_at \\
+thesis & Thesis & id BIGINT 自增 & student\_id FK, template\_version\_id FK, title, status, is\_locked, college\_id FK, created\_at, updated\_at \\
+thesis\_section & ThesisSection & id BIGINT 自增 & thesis\_id FK, title, section\_key, content TEXT, draft\_content TEXT, section\_type, parent\_id 自引用FK, sort\_order, created\_at, updated\_at \\
+\bottomrule
+\end{tabular}
+\end{table}
