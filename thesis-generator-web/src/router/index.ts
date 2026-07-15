@@ -53,6 +53,12 @@ const router = createRouter({
       meta: { requiresAuth: true, layout: 'default' },
     },
     {
+      path: '/demo/tiptap',
+      name: 'TiptapDemo',
+      component: () => import('@/views/demo/TiptapDemo.vue'),
+      meta: { requiresAuth: false, layout: 'default' },
+    },
+    {
       path: '/',
       redirect: '/papers',
     },

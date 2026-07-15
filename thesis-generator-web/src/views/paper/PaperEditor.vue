@@ -215,7 +215,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, View, Download, Plus } from '@element-design/icons-vue'
+import { ArrowLeft, View, Download, Plus } from '@element-plus/icons-vue'
 import EditorLayout from '@/layouts/EditorLayout.vue'
 import { useEditorStore } from '@/stores/editor'
 import { usePaperStore } from '@/stores/paper'
