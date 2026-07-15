@@ -1,1 +1,274 @@
-% 待填写 - 请在此文件中撰写对应章节的 LaTeX 内容
+% ============================================
+% F 负责：概要设计 - Redis缓存架构 + 部署架构
+% ============================================
+
+\section{缓存与部署架构设计}
+
+本章描述系统在缓存层与部署层的概要设计。缓存层基于 Redis 构建，为高频读取数据、用户会话及异步任务提供内存级访问加速；部署层采用 Docker 容器化方案，实现应用服务、数据库与缓存的统一编排与一键部署。
+
+% ===== 6.1 缓存架构概述 =====
+\subsection{缓存架构概述}
+
+ThesisGenerator 系统的读操作远多于写操作——学院信息、模板结构、参考文献格式等数据变更频率极低但查询频繁；论文章节在编辑过程中需要高频自动保存；JWT 令牌需要快速校验与失效管理。引入 Redis 作为统一缓存层，可显著降低 PostgreSQL 的读负载，提升系统整体响应速度。
+
+\subsubsection{缓存架构分层}
+
+系统缓存架构分为三层，自上而下依次为：
+
+\begin{enumerate}
+    \item \textbf{浏览器缓存层：} 前端 SPA 的静态资源（JS/CSS/字体）通过 HTTP Cache-Control 头缓存于浏览器，Template 结构等不常变数据缓存在 Vuex/Pinia 状态管理中，减少重复 API 请求。
+    \item \textbf{Redis 缓存层（核心）：} 部署于应用服务器与数据库之间，承载四项职责：
+    \begin{itemize}
+        \item 业务数据缓存：学院列表、模板版本、参考文献格式等读多写少数据。
+        \item 会话与令牌缓存：JWT Token 黑名单、Refresh Token、用户会话状态。
+        \item 草稿暂存：学生编辑过程中的章节草稿定时自动保存于 Redis，实现跨设备的编辑进度同步。
+        \item 限流与锁：登录接口的令牌桶限流计数器、导出任务的分布式锁。
+    \end{itemize}
+    \item \textbf{数据库持久层：} PostgreSQL 作为最终数据源，Redis 中所有缓存数据均有对应的数据库表，缓存失效后可回源查询重建。
+\end{enumerate}
+
+\subsubsection{缓存数据流}
+
+典型的数据读取流程如下：
+
+\begin{enumerate}
+    \item 客户端发起 API 请求 → Controller 层接收。
+    \item Service 层先查询 Redis 缓存，若命中（Cache Hit）则直接返回，耗时 $\le 5$ms。
+    \item 若未命中（Cache Miss），Service 查询 PostgreSQL，将结果序列化写入 Redis（设置合理 TTL），再返回给客户端。
+    \item 当源数据发生变更（增/删/改），Service 在事务提交后主动删除或更新对应的 Redis 缓存项（Cache-Aside 模式）。
+\end{enumerate}
+
+% ===== 6.2 Redis 数据结构设计 =====
+\subsection{Redis 数据结构设计}
+
+根据缓存数据的访问模式与生命周期，选用以下 Redis 数据结构：
+
+\begin{table}[htbp]
+\centering
+\caption{Redis 缓存项设计一览}
+\label{tab:redis-design}
+\begin{tabular}{|c|p{3cm}|c|c|c|}
+\hline
+\textbf{Key 模式} & \textbf{用途} & \textbf{类型} & \textbf{TTL} & \textbf{更新策略} \\
+\hline
+\texttt{token:<userId>} & JWT 令牌存储 & String & 24h & 登录写入/登出删除 \\
+\hline
+\texttt{refresh:<userId>} & Refresh Token & String & 7d & 登录写入/轮换更新 \\
+\hline
+\texttt{blacklist:<tokenId>} & Token 黑名单 & String & 24h & 登出/改密写入 \\
+\hline
+\texttt{college:list} & 学院全列表 & String(JSON) & 1h & 学院变更时删除 \\
+\hline
+\texttt{template:<id>} & 模板详情 & Hash & 30min & 模板更新时删除 \\
+\hline
+\texttt{template:version:<id>} & 模板版本 & Hash & 30min & 版本变更时删除 \\
+\hline
+\texttt{draft:<thesisId>:<sectionId>} & 章节草稿 & String(JSON) & 30min & 定时自动保存覆盖 \\
+\hline
+\texttt{rate:<ip>:<endpoint>} & 限流计数器 & String & 1min & 每次请求递增 \\
+\hline
+\texttt{lock:export:<thesisId>} & 导出分布式锁 & String & 30s & 导出开始设/结束删 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{序列化方案}
+
+采用 \texttt{GenericJackson2JsonRedisSerializer} 作为默认值序列化器，相较于 JDK 序列化具有以下优势：
+\begin{itemize}
+    \item 可读性好：缓存内容为 JSON 格式，便于运维排查。
+    \item 跨语言兼容：JSON 为通用格式，未来若引入其他语言微服务可直接读取。
+    \item 无需实现 \texttt{Serializable} 接口：对实体类零侵入。
+\end{itemize}
+
+Key 统一使用 \texttt{StringRedisSerializer}，保证 Key 的可读性。
+
+\subsubsection{连接池配置}
+
+Redis 客户端采用 Lettuce（Spring Boot Data Redis 默认实现），基于 Netty 异步 I/O，天然支持集群与哨兵模式。连接池参数设计如下：
+
+\begin{table}[htbp]
+\centering
+\caption{Lettuce 连接池配置}
+\label{tab:lettuce-config}
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{参数} & \textbf{值} & \textbf{说明} \\
+\hline
+max-active & 50 & 最大活跃连接数 \\
+\hline
+max-idle & 10 & 最大空闲连接数 \\
+\hline
+min-idle & 5 & 最小空闲连接数 \\
+\hline
+timeout & 3000ms & 连接超时时间 \\
+\hline
+\end{tabular}
+\end{table}
+
+% ===== 6.3 缓存策略详解 =====
+\subsection{缓存策略详解}
+
+\subsubsection{缓存预热}
+
+系统启动时通过 \texttt{@PostConstruct} 或 \texttt{ApplicationRunner} 将学院列表、当前生效的模板结构等启动必需数据预加载至 Redis，避免首批用户请求的冷启动延迟。
+
+\subsubsection{缓存失效策略}
+
+\begin{itemize}
+    \item \textbf{主动失效（Cache-Aside）：} 数据更新时，Service 层在数据库事务提交后显式调用 \texttt{redisTemplate.delete(key)} 删除对应缓存。下次读取时自动触发缓存重建。
+    \item \textbf{被动失效（TTL 过期）：} 每种缓存项设置合理 TTL，即使主动失效遗漏，也能在 TTL 到期后自动清理，防止脏数据长期驻留。
+    \item \textbf{批量失效：} 模板结构变更可能影响多个版本的缓存。采用 Key 前缀扫描（\texttt{template:*}）批量删除关联缓存项（生产环境慎用 \texttt{KEYS} 命令，改用 \texttt{SCAN} 游标迭代）。
+\end{itemize}
+
+\subsubsection{缓存穿透防护}
+
+对于查询不存在的数据（如查询不存在的论文 ID），若每次都穿透到数据库，可能被恶意利用造成数据库压力。防护措施：
+\begin{itemize}
+    \item 对查询结果为空的情况，缓存一个空值标记（如 \texttt{"NULL"}），TTL 设为较短的 60 秒。
+    \item 在 Service 层对查询参数进行合法性校验（如 ID 必须为正整数），非法参数直接返回。
+\end{itemize}
+
+\subsubsection{缓存雪崩防护}
+
+大量缓存项在同一时刻过期，导致瞬时流量全部打到数据库。防护措施：
+\begin{itemize}
+    \item 为不同缓存项的 TTL 添加随机偏移量（$\pm 10\%$），避免集中过期。
+    \item 核心缓存项（如学院列表）设置不过期或超长 TTL，仅在数据变更时主动刷新。
+\end{itemize}
+
+\subsubsection{缓存击穿防护}
+
+热点数据（如当前学期模板）在缓存过期瞬间被大量并发请求击穿到数据库。防护措施：
+\begin{itemize}
+    \item 使用 Redis \texttt{SETNX} 命令实现简单的分布式互斥锁，仅允许第一个未命中缓存的线程去查询数据库并重建缓存，其余线程等待或返回旧值。
+\end{itemize}
+
+% ===== 6.4 部署架构概述 =====
+\subsection{部署架构概述}
+
+ThesisGenerator 采用单机容器化部署方案（支持向集群平滑扩展），以 Docker Compose 编排三个核心服务：Spring Boot 应用、PostgreSQL 数据库、Redis 缓存。
+
+\subsubsection{容器拓扑}
+
+\begin{figure}[htbp]
+\centering
+\begin{verbatim}
+┌──────────────────────────────────────────────────────┐
+│                    Docker Host                        │
+│  ┌──────────────────────────────────────────────┐    │
+│  │              nginx (可选反向代理)              │    │
+│  │              0.0.0.0:80→8080                 │    │
+│  └──────────────────┬───────────────────────────┘    │
+│                     │                                 │
+│  ┌──────────────────▼───────────────────────────┐    │
+│  │         thesis-generator (Spring Boot)        │    │
+│  │               0.0.0.0:8080                     │    │
+│  │    ┌─────────────────────────────────────┐   │    │
+│  │    │  内嵌 Vue3 前端静态资源 (dist/)      │   │    │
+│  │    └─────────────────────────────────────┘   │    │
+│  └──────────┬───────────────────┬───────────────┘    │
+│             │                   │                     │
+│  ┌──────────▼───────┐  ┌────────▼──────────┐        │
+│  │   PostgreSQL      │  │   Redis            │        │
+│  │   0.0.0.0:5432    │  │   0.0.0.0:6379     │        │
+│  │   data volume     │  │   data volume      │        │
+│  └──────────────────┘  └───────────────────┘        │
+└──────────────────────────────────────────────────────┘
+\end{verbatim}
+\caption{系统容器拓扑图}
+\label{fig:deploy-topology}
+\end{figure}
+
+\subsubsection{各组件说明}
+
+\begin{table}[htbp]
+\centering
+\caption{部署组件清单}
+\label{tab:deploy-components}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{组件} & \textbf{镜像/版本} & \textbf{端口} & \textbf{职责} \\
+\hline
+thesis-generator & 自构建 (openjdk:21-jre-slim) & 8080 & Spring Boot 业务服务 \\
+\hline
+postgres & postgres:16-alpine & 5432 & 关系数据库持久化 \\
+\hline
+redis & redis:7-alpine & 6379 & 缓存与会话存储 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{数据卷规划}
+
+\begin{table}[htbp]
+\centering
+\caption{数据卷与挂载点}
+\label{tab:volumes}
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{数据卷} & \textbf{容器内路径} & \textbf{用途} \\
+\hline
+pgdata & /var/lib/postgresql/data & 数据库文件持久化 \\
+\hline
+redisdata & /data & Redis RDB/AOF 持久化 \\
+\hline
+uploads & /app/uploads/images & 上传图片存储 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{网络规划}
+
+所有容器加入同一 Docker 自定义桥接网络 \texttt{thesis-net}，通过容器名进行 DNS 解析（如 PostgreSQL 的 JDBC URL 中 host 写 \texttt{postgres} 而非 localhost）。不对外暴露 PostgreSQL（5432）与 Redis（6379）端口（仅应用容器内部访问），仅暴露应用端口 8080。
+
+\subsubsection{健康检查与重启策略}
+
+\begin{itemize}
+    \item \textbf{应用健康检查：} 通过 Spring Boot Actuator 的 \texttt{/actuator/health} 端点，Docker Compose 配置 \texttt{healthcheck} 指令定期探测。连续 3 次失败标记为 unhealthy。
+    \item \textbf{依赖健康检查：} 应用容器配置 \texttt{depends\_on} 与 \texttt{condition: service\_healthy}，确保 PostgreSQL 与 Redis 先于应用启动并就绪。
+    \item \textbf{重启策略：} 所有容器配置 \texttt{restart: unless-stopped}，保证宿主机重启后服务自动恢复。
+\end{itemize}
+
+\subsubsection{环境配置分层}
+
+采用 Spring Profile 实现多环境隔离：
+
+\begin{table}[htbp]
+\centering
+\caption{多环境配置策略}
+\label{tab:env-config}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{Profile} & \textbf{数据库} & \textbf{Redis} & \textbf{JPA DDL} \\
+\hline
+dev & localhost:5432 & localhost:6379 & update \\
+\hline
+test & test-db:5432 & test-redis:6379 & update \\
+\hline
+prod & prod-db:5432 & prod-redis:6379 & validate \\
+\hline
+\end{tabular}
+\end{table}
+
+通过 Docker Compose 的 \texttt{environment} 字段传入 \texttt{SPRING\_PROFILES\_ACTIVE=prod}，覆盖 \texttt{application.properties} 中的默认值。
+
+\subsubsection{资源限制}
+
+为每个容器设置 CPU 与内存上限，防止单个服务异常时耗尽宿主机资源：
+
+\begin{itemize}
+    \item 应用容器：CPU 上限 2 核，内存上限 1GB。
+    \item PostgreSQL：CPU 上限 1 核，内存上限 512MB。
+    \item Redis：CPU 上限 0.5 核，内存上限 256MB。
+\end{itemize}
+
+\subsubsection{部署流程}
+
+\begin{enumerate}
+    \item 构建应用 JAR：\texttt{./mvnw clean package -DskipTests}。
+    \item 构建 Docker 镜像：\texttt{docker build -t thesis-generator:latest .}。
+    \item 一键启动：\texttt{docker-compose up -d}（自动拉取 postgres 与 redis 镜像，启动全部服务）。
+    \item 验证：访问 \texttt{http://localhost:8080/actuator/health} 确认所有组件就绪。
+    \item 停止：\texttt{docker-compose down}（保留数据卷）；\texttt{docker-compose down -v}（销毁数据卷）。
+\end{enumerate}

@@ -1,1 +1,124 @@
-% 待填写 - 请在此文件中撰写对应章节的 LaTeX 内容
+% ============================================
+% F 负责：非功能性需求（性能 + 安全 + 可维护性）
+% ============================================
+
+\section{非功能性需求}
+
+非功能性需求定义了系统在功能正确性之外必须满足的质量属性与约束条件，是保障系统在生产环境中稳定、安全、高效运行的基础。本章从性能、安全性、可维护性三个维度进行详细阐述。
+
+% ===== 3.1 性能需求 =====
+\subsection{性能需求}
+
+性能需求关注系统在高并发场景下的响应能力与资源利用效率，是本系统支撑多用户同时编辑、提交与批阅论文的核心质量指标。
+
+\subsubsection{响应时间}
+
+\begin{itemize}
+    \item \textbf{页面加载：} 前端页面首屏加载时间不超过 2 秒（含 SPA 资源初始化），在 4G 网络条件下不超过 3 秒。
+    \item \textbf{API 响应：} 95\% 的 RESTful API 请求在 500ms 内返回结果；涉及 DOCX/PDF 导出的接口因需调用 LibreOffice 或 Apache POI 进行文件格式转换，允许上限为 10 秒，并采用异步任务队列（如基于 Redis 的消息队列）避免阻塞主线程。
+    \item \textbf{数据库查询：} 单表 CRUD 操作在 100ms 内完成；含多表 JOIN 的复杂查询（如章节树与批注联合加载）在 300ms 内完成。
+\end{itemize}
+
+\subsubsection{并发能力}
+
+\begin{itemize}
+    \item \textbf{并发用户数：} 系统应支持至少 200 个并发用户同时在线编辑论文、提交论文与查看批注。
+    \item \textbf{连接池配置：} 数据库连接池（HikariCP）最大连接数设置为 20，Redis 连接池（Lettuce）最大连接数设置为 50，确保在并发峰值时不耗尽数据库与缓存资源。
+    \item \textbf{限流策略：} 对登录接口、导出接口等高频/高消耗端点实施令牌桶限流（基于 Redis 计数器），单用户每秒请求数不超过 10 次。
+\end{itemize}
+
+\subsubsection{缓存策略}
+
+\begin{itemize}
+    \item \textbf{热点数据缓存：} 学院列表、模板结构、参考文献格式模板等读多写少的数据使用 Redis 缓存，减少数据库压力，缓存命中率目标 $\ge 85\%$。
+    \item \textbf{会话缓存：} 用户登录后的 JWT Token 黑名单与刷新令牌存储于 Redis，实现无状态服务的快速鉴权与登出。
+    \item \textbf{章节草稿缓存：} 学生编辑论文时，前端定时（每 30 秒）将草稿内容通过 Redis 暂存，实现多端切换不丢失编辑进度。
+\end{itemize}
+
+\subsubsection{吞吐量}
+
+\begin{itemize}
+    \item 系统整体 TPS（每秒事务数）在混合负载（80\% 读 + 20\% 写）下不低于 500。
+    \item DOCX/PDF 导出吞吐量不低于 20 份/分钟（单机部署）。
+\end{itemize}
+
+% ===== 3.2 安全性需求 =====
+\subsection{安全性需求}
+
+安全性需求确保系统能够抵御常见 Web 攻击，保护用户数据与论文内容的机密性、完整性与可用性。
+
+\subsubsection{身份认证}
+
+\begin{itemize}
+    \item \textbf{认证方式：} 采用 JWT（JSON Web Token）无状态认证机制。用户使用用户名+密码登录后，服务端签发有效期 24 小时的 Access Token，前端将其存储于 HttpOnly Cookie（非 localStorage）以防范 XSS 攻击窃取令牌。
+    \item \textbf{密码策略：} 用户密码使用 BCrypt 算法加盐哈希存储，盐值随机生成，杜绝明文或弱哈希存储。密码最小长度 8 位，须包含字母与数字。
+    \item \textbf{会话管理：} 服务端维护 Redis 中的 Token 黑名单，用户主动登出或修改密码后将当前 Token 加入黑名单，实现即时失效。Token 续期采用 Refresh Token 机制，减少重复登录。
+\end{itemize}
+
+\subsubsection{访问控制}
+
+\begin{itemize}
+    \item \textbf{基于角色的访问控制（RBAC）：} 系统定义三种角色——系统管理员（ADMIN）、教师（TEACHER）、学生（STUDENT）。通过自定义注解 \texttt{@RoleRequired} 与拦截器 \texttt{RoleInterceptor} 对每个 API 端点进行角色校验。
+    \item \textbf{数据级权限：} 学生仅可查看与编辑本人的论文；教师仅可批阅所属学院的论文；管理员拥有全局管理权限。所有数据查询均在后端通过当前登录用户 ID 进行过滤，不依赖前端传参。
+    \item \textbf{API 防护：} 除认证接口外，所有 \texttt{/api/**} 路径均经过 JWT 过滤器校验，非法请求在网关层即被拦截并返回 HTTP 401。
+\end{itemize}
+
+\subsubsection{数据安全}
+
+\begin{itemize}
+    \item \textbf{传输安全：} 生产环境强制启用 HTTPS，所有 API 通信经 TLS 1.2+ 加密。开发环境可暂用 HTTP。
+    \item \textbf{输入校验：} 所有用户输入（表单、文件上传、URL 参数）在后端进行二次校验，防止 SQL 注入、XSS、CSRF 攻击。Spring Boot 集成 Hibernate Validator 对 DTO 字段进行注解式校验。
+    \item \textbf{文件上传安全：} 上传文件限制为图片类型（jpg/png/gif），最大单文件 10MB，通过文件魔数（Magic Number）校验文件真实类型，禁止可执行文件与脚本文件上传。上传文件存储于非 Web 可访问目录，通过专用接口代理访问。
+    \item \textbf{SQL 注入防护：} 使用 Spring Data JPA 的参数化查询，杜绝字符串拼接 SQL。MyBatis 或原生 SQL 场景强制使用 \texttt{PreparedStatement}。
+\end{itemize}
+
+\subsubsection{日志与审计}
+
+\begin{itemize}
+    \item \textbf{操作日志：} 关键操作（登录/登出、论文提交、批阅打分、权限变更）记录至数据库审计表，包含操作人、操作时间、IP 地址、操作内容。
+    \item \textbf{敏感信息脱敏：} 日志中不得记录明文密码、Token 等敏感信息。异常堆栈中涉及的敏感参数进行脱敏处理。
+\end{itemize}
+
+% ===== 3.3 可维护性需求 =====
+\subsection{可维护性需求}
+
+可维护性需求保障系统在交付后能够高效地进行缺陷修复、功能扩展与环境迁移。
+
+\subsubsection{代码规范与结构}
+
+\begin{itemize}
+    \item \textbf{分层架构：} 严格遵循 Controller → Service → Repository 三层架构，各层职责清晰：Controller 处理 HTTP 请求与参数校验，Service 编排业务逻辑，Repository 封装数据访问。
+    \item \textbf{统一返回格式：} 所有 API 响应使用统一的 \texttt{Result<T>} 包装类，包含状态码（code）、消息（message）、数据（data）三个字段，前端可据此统一处理成功与异常分支。
+    \item \textbf{全局异常处理：} 通过 \texttt{@RestControllerAdvice} 的 \texttt{GlobalExceptionHandler} 统一捕获并处理业务异常（\texttt{BusinessException}）与系统异常，向前端返回结构化的错误信息，避免异常堆栈泄露。
+    \item \textbf{命名规范：} 遵循阿里巴巴 Java 开发手册规范。类名采用大驼峰（PascalCase），方法名与变量名采用小驼峰（camelCase），数据库表名与字段名采用下划线分隔（snake\_case）。
+\end{itemize}
+
+\subsubsection{配置管理}
+
+\begin{itemize}
+    \item \textbf{外部化配置：} 数据库连接、Redis 地址、JWT 密钥、文件上传路径等环境相关配置均存放于 \texttt{application.properties}，支持通过环境变量覆盖，实现一次构建、多环境部署。
+    \item \textbf{多环境 Profile：} 提供 dev（开发）、test（测试）、prod（生产）三套 Spring Profile，分别对应不同的数据库实例与日志级别。
+\end{itemize}
+
+\subsubsection{可测试性}
+
+\begin{itemize}
+    \item \textbf{单元测试：} 核心业务逻辑（Service 层）编写 JUnit 5 + Mockito 单元测试，覆盖率目标 $\ge 70\%$。
+    \item \textbf{接口测试：} 使用 Spring MockMvc 对 Controller 层进行集成测试，覆盖正常流程与异常边界。
+    \item \textbf{Swagger 文档：} 集成 SpringDoc OpenAPI（Swagger 3），自动生成 API 文档页面（\texttt{/doc.html}），方便前后端联调与手工测试。
+\end{itemize}
+
+\subsubsection{部署与运维}
+
+\begin{itemize}
+    \item \textbf{容器化部署：} 提供 Dockerfile 与 docker-compose.yml，实现应用服务 + PostgreSQL + Redis 的一键编排部署，降低环境差异导致的部署问题。
+    \item \textbf{健康检查：} 集成 Spring Boot Actuator，暴露 \texttt{/actuator/health} 端点用于容器编排平台的存活探针与就绪探针。
+    \item \textbf{数据库迁移：} 使用 JPA 的 \texttt{ddl-auto=update} 策略在开发阶段自动同步表结构；生产环境切换为 \texttt{validate}，结合 Flyway 或手动 SQL 脚本进行版本化数据库迁移。
+\end{itemize}
+
+\subsubsection{文档化}
+
+\begin{itemize}
+    \item 所有对外 API 接口须在 Swagger 中标注请求方法、路径、参数说明与返回值示例。
+    \item 核心模块（缓存策略、批阅流程、部署步骤）提供单独的技术说明文档，降低新成员接手维护的学习成本。
+\end{itemize}
