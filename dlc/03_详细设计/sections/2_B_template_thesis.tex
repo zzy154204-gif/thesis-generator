@@ -1,1 +1,285 @@
-% 待填写 - 请在此文件中撰写对应章节的 LaTeX 内容
+% ============================================================
+% 2_B_template_thesis.tex --- 模板模块 + 论文模块 详细设计
+% 编写人：B  日期：2026-07-15
+% 职责：实体DDL / API规范 / 业务流程 / 核心算法
+% ============================================================
+
+\section{College 实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{sys\_college 表结构}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id        & BIGINT  & PK, AUTO\_INCREMENT & —      & 主键 \\
+name      & VARCHAR(100) & NOT NULL        & —      & 学院名称 \\
+code      & VARCHAR(50)  & NOT NULL, UNIQUE & —      & 学院代码，全局唯一 \\
+created\_at & DATETIME & —              & NOW()  & 创建时间 \\
+updated\_at & DATETIME & —              & NOW()  & 更新时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{业务规则}
+
+\begin{enumerate}
+    \item 学院代码（code）创建后不可修改，确保系统内部标识的稳定性。
+    \item 新增学院时校验 code 唯一性：若已存在相同 code 返回 409 Conflict。
+    \item 删除学院前执行关联检查：查询 template 表 WHERE college\_id = ? AND enabled = TRUE；查询 thesis 表 WHERE college\_id = ? AND status != 'COMPLETED'。任意检查返回记录数 > 0 则返回错误并阻止删除。
+    \item 学院列表接口不分页（数据量有限），按 name 字段升序返回全部记录。
+\end{enumerate}
+
+\section{Template 实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{template 表结构}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id         & BIGINT  & PK, AUTO\_INCREMENT & —      & 主键 \\
+name       & VARCHAR(200) & NOT NULL        & —      & 模板名称 \\
+type       & VARCHAR(20)  & NOT NULL        & —      & 模板类型枚举 \\
+college\_id & BIGINT  & FK → sys\_college.id, NULLABLE & NULL & 适用学院，NULL 表示通用 \\
+enabled    & BOOLEAN & NOT NULL         & TRUE   & 启用状态 \\
+created\_at & DATETIME & —              & NOW()  & 创建时间 \\
+updated\_at & DATETIME & —              & NOW()  & 更新时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{模板类型枚举定义}
+
+\begin{table}[htbp]
+\centering
+\caption{Template.type 枚举值}
+\begin{tabular}{llp{7cm}}
+\toprule
+\textbf{枚举值} & \textbf{中文名称} & \textbf{模板特征} \\
+\midrule
+GRADUATION & 毕业设计论文 & 含封面、中英文摘要、目录、多章正文、致谢、参考文献 \\
+COURSE     & 课程论文     & 结构简化，不含中英文摘要和致谢，一般为单章结构 \\
+PROJECT    & 项目报告     & 含项目背景、需求分析、设计方案、实现过程、测试结论 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{业务规则}
+
+\begin{enumerate}
+    \item 创建模板时，college\_id 可为 NULL（通用模板）或指定学院 ID。
+    \item 模板列表查询支持 type 和 college\_id 可选筛选参数，按 updated\_at 降序排列。
+    \item 启用/禁用：enabled 设为 false 时，新论文不可选用该模板，但已使用该模板的论文不受影响。
+    \item 删除模板前检查 thesis 表 WHERE template\_version\_id IN (SELECT id FROM template\_version WHERE template\_id = ?) AND status IN ('DRAFT','SUBMITTED','REVIEWED','RETURNED','GENERATING')，存在记录则阻止删除。
+\end{enumerate}
+
+\section{TemplateVersion 实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{template\_version 表结构}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id              & BIGINT   & PK, AUTO\_INCREMENT & —      & 主键 \\
+template\_id     & BIGINT   & FK → template.id, NOT NULL & — & 所属模板 \\
+version\_number  & VARCHAR(20) & NOT NULL       & '1.0'  & 版本号字符串 \\
+is\_current      & BOOLEAN  & NOT NULL         & TRUE   & 是否当前生效版本 \\
+cover\_fields    & TEXT     & —                & '[]'   & 封面字段配置（JSON Array）\\
+chapter\_structure & TEXT   & —                & '[]'   & 章节结构配置（JSON Array）\\
+format\_config   & TEXT     & —                & '\{\}' & 排版格式配置（JSON Object）\\
+created\_at      & DATETIME & —                & NOW()  & 创建时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{版本号递增算法}
+
+版本号格式为 MAJOR.MINOR（如 1.0、2.3）。
+
+\begin{lstlisting}[language=Java]
+public String incrementVersion(String currentVersion) {
+    String[] parts = currentVersion.split("\\.");
+    int major = Integer.parseInt(parts[0]);
+    int minor = Integer.parseInt(parts[1]);
+    if (minor < 9) {
+        return major + "." + (minor + 1);  // 1.0 -> 1.1
+    } else {
+        return (major + 1) + ".0";          // 1.9 -> 2.0
+    }
+}
+\end{lstlisting}
+
+\subsection{版本管理核心流程}
+
+\begin{enumerate}
+    \item \textbf{创建模板}：创建 Template 记录的同时，自动创建首条 TemplateVersion 记录（version\_number="1.0"，is\_current=true，三个 JSON 字段初始化为空数组/空对象）。
+    \item \textbf{编辑并保存配置}：管理员修改 JSON 配置后点击保存，系统执行：①将当前 is\_current 版本置为 false；②调用 incrementVersion() 计算新版本号；③创建新 TemplateVersion 记录，is\_current=true。
+    \item \textbf{版本回滚}：管理员选择历史版本点击"激活"，系统执行：UPDATE template\_version SET is\_current = false WHERE template\_id = ? AND is\_current = true；UPDATE template\_version SET is\_current = true WHERE id = ?。回滚不影响已绑定该模板历史版本的论文。
+    \item \textbf{差异对比}：前端请求两个版本 id，后端返回两个版本的三个 JSON 字段。前端使用 JSON diff 算法逐字段对比，以绿色标记新增、红色标记删除、灰色标记未变更。
+\end{enumerate}
+
+\section{Thesis 实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{thesis 表结构}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id                  & BIGINT   & PK, AUTO\_INCREMENT & —      & 主键 \\
+student\_id          & BIGINT   & FK → user.id, NOT NULL & —  & 所属学生 \\
+template\_version\_id & BIGINT   & FK → template\_version.id & — & 使用的模板版本快照 \\
+title               & VARCHAR(500) & NOT NULL      & '未命名论文' & 论文标题 \\
+status              & VARCHAR(20)  & NOT NULL      & 'DRAFT' & 论文状态 \\
+is\_locked           & BOOLEAN  & NOT NULL         & FALSE  & 是否锁定 \\
+college\_id          & BIGINT   & FK → sys\_college.id & —   & 所属学院 \\
+created\_at          & DATETIME & —                & NOW()  & 创建时间 \\
+updated\_at          & DATETIME & —                & NOW()  & 更新时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{论文状态转换详细规则}
+
+\begin{table}[htbp]
+\centering
+\caption{论文状态转换详细规则}
+\begin{tabular}{lllp{5cm}}
+\toprule
+\textbf{当前状态} & \textbf{目标状态} & \textbf{前置条件} & \textbf{后置动作} \\
+\midrule
+DRAFT & SUBMITTED & 所有章节 content 非空 & is\_locked = true; 记录提交时间 \\
+DRAFT & GENERATING & 所有章节 content 非空 & is\_locked = true; 提交异步导出任务 \\
+SUBMITTED & REVIEWED & 教师完成批注 & 通知学生 \\
+SUBMITTED & RETURNED & 教师退回 & is\_locked = false; 通知学生修改 \\
+RETURNED & DRAFT & 学生进入编辑页 & 自动切换（无额外操作）\\
+GENERATING & COMPLETED & 导出任务成功 & 记录导出文件路径; 通知学生下载 \\
+GENERATING & DRAFT & 导出任务失败 & is\_locked = false; 通知学生失败原因 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{论文创建流程}
+
+\begin{enumerate}
+    \item 学生 POST /api/theses，请求体包含 title、templateVersionId、collegeId。
+    \item 后端校验：title 非空，templateVersionId 对应版本存在，collegeId 对应学院存在。
+    \item 创建 Thesis 记录（status=DRAFT）。
+    \item 查询 TemplateVersion 的 chapter\_structure JSON，递归遍历：
+    \begin{enumerate}
+        \item 对每个 type 不是 "auto" 的节点，创建 ThesisSection 记录（thesis\_id=新论文id, section\_key=节点的key, title=节点的title, section\_type=节点的type, parent\_id=父章节id, sort\_order=遍历顺序）。
+        \item type 为 "auto" 的节点（如目录）不创建 ThesisSection 记录。
+    \end{enumerate}
+    \item 返回创建成功的 Thesis 对象。
+\end{enumerate}
+
+\section{ThesisSection 实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{thesis\_section 表结构}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id            & BIGINT   & PK, AUTO\_INCREMENT & —      & 主键 \\
+thesis\_id     & BIGINT   & FK → thesis.id, NOT NULL & —  & 所属论文 \\
+title         & VARCHAR(300) & NOT NULL       & —      & 章节标题 \\
+section\_key   & VARCHAR(100) & NOT NULL       & —      & 对应模板 chapterStructure 的 key \\
+content       & TEXT     & —                & ''     & 正式内容（富文本 HTML）\\
+draft\_content & TEXT     & —                & ''     & 草稿内容（自动保存）\\
+section\_type  & VARCHAR(50)  & —             & 'chapter' & 章节类型 \\
+parent\_id     & BIGINT   & —                & NULL   & 父章节 ID（自引用外键，NULL 为根节点）\\
+sort\_order    & INT      & —                & 0      & 同层级排序序号 \\
+created\_at    & DATETIME & —                & NOW()  & 创建时间 \\
+updated\_at    & DATETIME & —                & NOW()  & 更新时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{自动保存策略}
+
+\begin{itemize}
+    \item 前端编辑器每 30 秒触发 POST /api/sections/\{id\}/auto-save，请求体中仅包含 \{ "draftContent": "..." \}。
+    \item 后端仅更新 draft\_content 字段，不影响 content 字段，不触发论文 updated\_at 更新。
+    \item 学生手动点击"保存"时，PUT /api/sections/\{id\}，请求体 \{ "content": "..." \}，将正式内容写入 content 字段并更新论文 updated\_at。
+    \item 前端加载章节内容时优先级：draft\_content 非空时展示 draft\_content（提示"恢复未保存内容"），否则展示 content。
+\end{itemize}
+
+\subsection{章节树查询实现}
+
+获取论文全部章节树的 SQL 查询：
+
+\begin{lstlisting}[language=Java]
+// Repository 层
+@Query("SELECT s FROM ThesisSection s WHERE s.thesisId = :thesisId ORDER BY s.sortOrder ASC")
+List<ThesisSection> findAllByThesisId(@Param("thesisId") Long thesisId);
+
+// Service 层 —— 构建树形结构
+public List<SectionTreeNode> buildTree(Long thesisId) {
+    List<ThesisSection> all = repository.findAllByThesisId(thesisId);
+    Map<Long, List<ThesisSection>> parentMap = all.stream()
+        .filter(s -> s.getParentId() != null)
+        .collect(Collectors.groupingBy(ThesisSection::getParentId));
+    return all.stream()
+        .filter(s -> s.getParentId() == null)  // 根节点
+        .map(root -> buildNode(root, parentMap))
+        .collect(Collectors.toList());
+}
+
+private SectionTreeNode buildNode(ThesisSection section,
+        Map<Long, List<ThesisSection>> parentMap) {
+    SectionTreeNode node = new SectionTreeNode(section);
+    List<ThesisSection> children = parentMap.getOrDefault(section.getId(), List.of());
+    node.setChildren(children.stream()
+        .map(child -> buildNode(child, parentMap))
+        .collect(Collectors.toList()));
+    return node;
+}
+\end{lstlisting}
+
+\section{核心业务流程图}
+
+\subsection{流程一：管理员创建并发布模板}
+
+\begin{enumerate}
+    \item 管理员 POST /api/templates，创建模板 → Template + TemplateVersion(V1.0) 入库。
+    \item 管理员进入版本编辑页，配置 coverFields（拖拽封面元素）、chapterStructure（增删章节节点）、formatConfig（设置字体页边距）。
+    \item 管理员点击"预览"：系统调用预览服务，用示例数据 + 当前 JSON 配置渲染 PDF → 浏览器新标签页展示。
+    \item 管理员确认无误，点击"保存并发布"：系统递增版本号，创建新 TemplateVersion 记录 → 学生端模板列表立即可见。
+\end{enumerate}
+
+\subsection{流程二：学生创建论文并撰写}
+
+\begin{enumerate}
+    \item 学生 POST /api/theses → 系统创建 Thesis(DRAFT) + 按模板 chapterStructure 批量创建 ThesisSection 记录。
+    \item 前端加载编辑器：左侧渲染章节树（GET /api/theses/\{id\}/sections），右侧渲染富文本编辑器。
+    \item 学生切换章节 → 前端 GET 对应 section 的 content/draftContent → 加载到编辑器。
+    \item 学生编辑内容 → 每 30 秒 auto-save draftContent → 手动保存时写 content。
+    \item 全部章节完成后，学生点击"提交" → 校验所有 content 非空 → status 变为 SUBMITTED → is\_locked=true。
+\end{enumerate}
+
+\subsection{流程三：模板版本升级不影响已有论文}
+
+\begin{enumerate}
+    \item 管理员修改模板 JSON 配置并保存 → 版本号递增（V1.0→V1.1）。
+    \item 已有论文的 template\_version\_id 仍指向 TemplateVersion(id=3, V1.0)，不受影响。
+    \item 新论文创建时，系统默认查询当前生效版本（is\_current=true），即使用 V1.1。
+    \item 若学生希望使用旧版模板，前端模板选择器列出所有历史版本供手动选择。
+\end{enumerate}
