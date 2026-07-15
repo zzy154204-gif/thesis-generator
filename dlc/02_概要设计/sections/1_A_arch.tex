@@ -1,1 +1,480 @@
-% 待填写 - 请在此文件中撰写对应章节的 LaTeX 内容
+% ============================================
+% 第1章：系统总体架构 + 技术选型 + 数据库设计
+% 负责人：A
+% ============================================
+
+\section{系统总体架构}
+
+\subsection{架构设计原则}
+
+本系统遵循以下架构设计原则：
+
+\begin{enumerate}
+    \item \textbf{前后端分离}：前端采用Vue 3单页应用（SPA），后端采用Spring Boot RESTful API，前后端通过HTTP/JSON协议通信，实现彻底的前后端解耦，便于独立开发、测试和部署；
+    \item \textbf{分层架构}：后端采用Controller-Service-Repository三层架构，各层职责明确、单向依赖，上层调用下层接口，下层不感知上层逻辑；
+    \item \textbf{无状态服务}：API服务不持有会话状态，认证信息通过JWT Token在客户端和服务端之间传递，Token缓存至Redis以保证分布式环境下的一致性；
+    \item \textbf{数据一致性}：核心业务数据采用关系型数据库PostgreSQL存储，利用外键约束、事务管理和数据库索引保证数据完整性和查询性能；
+    \item \textbf{缓存策略}：高频读取的热点数据（模板配置、用户会话）缓存在Redis中，减少数据库查询压力，提升系统响应速度。
+\end{enumerate}
+
+\subsection{B/S三层架构}
+
+系统采用经典的B/S（Browser/Server）三层架构模型，从逻辑上划分为表现层、业务逻辑层和数据访问层，如图\ref{fig:bs_arch}所示。
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tabular}{|c|}
+        \hline
+        \textbf{表现层（Presentation Layer）} \\
+        Vue 3 + Element Plus + Axios \\
+        浏览器端渲染，响应式布局 \\
+        \hline
+        \textbf{$\uparrow$ HTTP/JSON / JWT Token $\downarrow$} \\
+        \hline
+        \textbf{业务逻辑层（Business Logic Layer）} \\
+        Spring Boot 4.1.0 + Spring MVC \\
+        Controller → Service → Repository \\
+        JWT认证 · 角色鉴权 · 业务校验 · 文档生成 \\
+        \hline
+        \textbf{$\uparrow$ JDBC / Redis Protocol $\downarrow$} \\
+        \hline
+        \textbf{数据访问层（Data Access Layer）} \\
+        PostgreSQL 16（业务数据）\quad Redis 7（缓存/Token） \\
+        文件系统（图片/DOCX/PDF） \\
+        \hline
+    \end{tabular}
+    \caption{B/S三层架构示意图}
+    \label{fig:bs_arch}
+\end{figure}
+
+各层职责说明如下：
+
+\begin{itemize}
+    \item \textbf{表现层}：负责用户界面展示和交互，基于Vue 3 Composition API构建组件化页面，使用Element Plus组件库统一UI风格，通过Axios封装HTTP请求与后端API通信。页面包括登录注册、论文编辑、模板管理、批阅审核等功能模块；
+    \item \textbf{业务逻辑层}：作为系统核心，基于Spring Boot框架实现全部业务逻辑。Controller层负责接收HTTP请求、参数校验和响应格式化；Service层封装业务规则（用户认证、论文管理、模板控制、文档导出、批注批阅等）；Repository层通过Spring Data JPA完成数据持久化操作；
+    \item \textbf{数据访问层}：PostgreSQL存储全部结构化业务数据（用户、论文、模板、批注等），Redis提供Token缓存和热点数据缓存服务，服务器本地文件系统存储上传的图片资源和生成的DOCX/PDF文档文件。
+\end{itemize}
+
+\subsection{前后端分离交互流程}
+
+前后端分离架构下的典型请求处理流程如下：
+
+\begin{enumerate}
+    \item 用户在浏览器中操作，Vue 3前端通过Axios发起HTTP请求（GET/POST/PUT/DELETE），请求头携带JWT Token（格式：\verb|Authorization: Bearer <token>|）；
+    \item 请求到达Spring Boot内嵌Tomcat服务器，首先经过JWT过滤器（JwtFilter）解析Token并将用户信息（userId、username、role）注入请求上下文；
+    \item 请求分发至对应的Controller方法，Spring MVC完成参数绑定和JSR-303校验（@Valid）；
+    \item Controller调用Service层执行业务逻辑，Service通过JPA Repository与PostgreSQL数据库交互，必要时读写Redis缓存；
+    \item Service将处理结果返回Controller，Controller通过统一返回体Result封装响应数据（code、message、data）返回前端；
+    \item 前端根据响应状态码和数据进行页面渲染或错误提示。
+\end{enumerate}
+
+\subsection{系统模块划分}
+
+系统按功能划分为六大核心模块，如表\ref{tab:modules}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{系统功能模块划分}
+    \label{tab:modules}
+    \begin{tabular}{|c|c|p{7cm}|}
+        \hline
+        \textbf{模块编号} & \textbf{模块名称} & \textbf{功能说明} \\
+        \hline
+        M1 & 认证与权限管理模块 & 用户注册、登录、登出，JWT Token签发与验证，角色权限控制（ADMIN/STUDENT/TEACHER），密码BCrypt加密存储 \\
+        \hline
+        M2 & 模板与论文管理模块 & 管理员按学院管理论文模板（封面字段、章节结构、格式参数），支持模板版本管理；学生创建论文、在线编辑章节内容（富文本）、草稿自动保存与手动保存 \\
+        \hline
+        M3 & 参考文献与图片管理模块 & 学生逐条录入参考文献信息（支持BibTeX批量导入），上传论文插图（格式/大小校验），图片内联展示 \\
+        \hline
+        M4 & 文档导出模块 & 基于论文内容+模板格式配置，服务端异步生成标准DOCX（Apache POI）和PDF（LaTeX编译）文档，提供下载 \\
+        \hline
+        M5 & 前端交互与UI模块 & Vue 3组件化页面构建，包括学生端（论文编辑、预览、导出、提交）、教师端（批注、评阅、退回）、管理员端（模板管理、学院管理） \\
+        \hline
+        M6 & 提交批阅与缓存部署模块 & 学生论文提交/教师批阅/退回重提完整流程，Redis缓存策略，系统一键部署配置（Docker Compose） \\
+        \hline
+    \end{tabular}
+\end{table}
+
+六大模块的依赖关系为：M1认证鉴权模块为所有模块提供统一的身份认证和权限校验基础；M2模板论文模块是核心业务模块，M3参考文献模块和M4导出模块依赖于M2的论文数据；M5前端模块为M1-M4提供用户操作界面；M6提交批阅模块串联学生、教师角色的协同工作流。
+
+\section{技术选型}
+
+\subsection{技术栈总览}
+
+系统技术栈如表\ref{tab:techstack}所示，每一项技术的选择均基于明确的技术理由和项目约束。
+
+\begin{table}[htbp]
+    \centering
+    \caption{系统技术栈总览}
+    \label{tab:techstack}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{层次} & \textbf{技术} & \textbf{版本} \\
+        \hline
+        后端框架 & Spring Boot & 4.1.0 \\
+        \hline
+        编程语言 & Java & 21 (LTS) \\
+        \hline
+        Web框架 & Spring Web MVC (spring-boot-starter-webmvc) & 4.1.0 \\
+        \hline
+        ORM框架 & Spring Data JPA (Hibernate) & 4.1.0 \\
+        \hline
+        关系型数据库 & PostgreSQL & 16+ \\
+        \hline
+        缓存中间件 & Redis & 7+ \\
+        \hline
+        认证 & JJWT (io.jsonwebtoken) & 0.12.6 \\
+        \hline
+        密码加密 & Spring Security Crypto (BCrypt) & 6.x \\
+        \hline
+        API文档 & Knife4j (Swagger/OpenAPI 3) & 4.5.0 \\
+        \hline
+        前端框架 & Vue 3 (Composition API) & 3.x \\
+        \hline
+        构建工具 & Vite & 5.x \\
+        \hline
+        UI组件库 & Element Plus & 2.x \\
+        \hline
+        HTTP客户端 & Axios & 1.x \\
+        \hline
+        前端路由 & Vue Router & 4.x \\
+        \hline
+        DOCX生成 & Apache POI (poi-ooxml) & 5.x \\
+        \hline
+        PDF生成 & LaTeX (xelatex) + 模板类 & TeX Live 2024+ \\
+        \hline
+        构建管理 & Maven (mvnw wrapper) & 3.9+ \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{后端技术选型分析}
+
+\subsubsection{Spring Boot 4.1.0 + Java 21}
+
+Spring Boot 4.1.0是Spring生态最新的稳定主版本，基于Java 21 LTS（长期支持版本）构建。选择理由如下：
+
+\begin{itemize}
+    \item \textbf{约定优于配置}：自动配置机制大幅减少XML配置，通过application.properties管理全部参数，开发效率高；
+    \item \textbf{内嵌Tomcat}：无需单独部署Web容器，应用打包为可执行JAR，配合Maven Wrapper实现零环境依赖启动；
+    \item \textbf{生态成熟}：与Spring Data JPA、Spring Web MVC、Spring Security Crypto等子项目无缝集成；
+    \item \textbf{Java 21特性}：支持虚拟线程（Virtual Threads）、记录类（Records）、模式匹配（Pattern Matching）等现代语言特性，提升代码可读性和并发处理能力；
+    \item \textbf{生产就绪}：内置Actuator健康检查、Metrics监控端点，便于运维巡检。
+\end{itemize}
+
+\subsubsection{Spring Data JPA + PostgreSQL 16}
+
+数据持久化层采用JPA（Java Persistence API）规范实现，选择理由：
+
+\begin{itemize}
+    \item \textbf{对象关系映射}：Java实体类通过注解直接映射数据库表结构，减少手写SQL，提高开发效率；
+    \item \textbf{方法命名查询}：Spring Data JPA通过Repository接口的方法命名规则自动生成查询SQL，常见CRUD操作无需编写JPQL；
+    \item \textbf{数据库迁移友好}：通过spring.jpa.hibernate.ddl-auto=validate在校验模式下确保实体定义与数据库结构一致；
+    \item \textbf{PostgreSQL优势}：支持JSONB类型（模板配置的灵活存储）、丰富的索引类型（B-tree、GIN）、ACID事务保证、成熟的并发控制（MVCC）；
+    \item \textbf{外键约束}：利用数据库级外键保证引用完整性，防止数据孤岛。
+\end{itemize}
+
+\subsubsection{Redis 7}
+
+Redis作为缓存层和Token存储，选择理由：
+
+\begin{itemize}
+    \item \textbf{高性能}：纯内存操作，读写延迟在毫秒级，单机QPS可达10万+；
+    \item \textbf{数据结构丰富}：String类型存储Token和序列化对象（JSON），支持设置过期时间（TTL），天然适合JWT Token的24小时过期管理；
+    \item \textbf{轻量级}：部署和维护成本低，实训环境中单实例即可满足需求。
+\end{itemize}
+
+\subsection{认证与安全方案}
+
+系统未引入Spring Security全套框架，而是采用轻量级的自定义认证方案：
+
+\begin{itemize}
+    \item \textbf{JWT Token（jjwt 0.12.6）}：无状态Token认证，服务端不保存会话，Token自带用户ID、用户名、角色信息，通过HMAC-SHA256签名防篡改，有效期24小时；
+    \item \textbf{BCrypt密码加密（spring-security-crypto）}：单向哈希加盐算法，相同密码每次加密结果不同，有效防御彩虹表攻击，work factor默认10轮；
+    \item \textbf{角色级权限控制}：自定义@RoleRequired注解配合Spring MVC拦截器，在Controller方法级别声明所需的角色（ADMIN/STUDENT/TEACHER），拦截器在请求进入Controller前校验当前用户角色是否在允许列表中；
+    \item \textbf{前后端双重校验}：前端路由守卫隐藏无权限页面入口，后端API强制校验JWT Token和角色权限，防止绕过前端直接调用API。
+\end{itemize}
+
+\subsection{前端技术选型分析}
+
+\subsubsection{Vue 3 + Vite}
+
+Vue 3采用Composition API编程范式，相比Options API具有更好的逻辑复用性和TypeScript支持；Vite作为下一代前端构建工具，利用ES模块原生支持实现极速冷启动和热更新（HMR），开发体验显著优于Webpack。Element Plus是基于Vue 3的成熟UI组件库，提供表单、表格、对话框、上传、富文本等丰富的企业级组件，降低前端开发工作量。
+
+\subsubsection{Axios + Vue Router}
+
+Axios封装HTTP请求，统一配置Base URL、请求超时、拦截器（请求前自动注入JWT Token，响应时统一处理401未授权跳转）；Vue Router 4实现前端单页路由，通过嵌套路由组织页面层级（Layout布局页→功能子页面），路由守卫在页面切换前校验用户登录状态和角色权限。
+
+\subsection{文档生成方案}
+
+文档导出是本系统的核心功能之一，采用两种技术路径：
+
+\begin{itemize}
+    \item \textbf{DOCX生成（Apache POI）}：Apache POI是Java领域操作Microsoft Office文档的事实标准库，通过poi-ooxml模块可编程创建DOCX文件。服务端根据论文HTML内容解析文本段落、样式标记、图片引用，结合模板格式配置（字体、字号、行距、页边距），按序构建XWPFDocument对象并输出DOCX字节流；
+    \item \textbf{PDF生成（LaTeX + xelatex）}：利用已有的LaTeX模板类（softeng.cls）和编译流程，服务端将论文内容转换为LaTeX源码文件，调用xelatex编译器生成高质量PDF文档。LaTeX排版引擎在数学公式、参考文献格式化、目录自动生成方面具有不可替代的优势。
+\end{itemize}
+
+\section{数据库设计}
+
+\subsection{数据库概述}
+
+系统数据库名称为\verb|thesis_generator|，使用PostgreSQL 16关系型数据库。数据库设计遵循第三范式（3NF），核心实体间通过外键建立关联约束，保证数据引用完整性。共设计10张核心数据表和1张辅助历史记录表。
+
+\subsection{实体关系设计}
+
+系统的核心实体及其关系如下：
+
+\begin{itemize}
+    \item \textbf{学院（College）}与\textbf{用户（User）}：一对多关系。一个学院包含多名用户（学生和教师），用户通过college\_id外键关联所属学院；
+    \item \textbf{学院（College）}与\textbf{模板（Template）}：一对多关系。一个学院下可有多个论文模板，模板通过college\_id外键关联所属学院；
+    \item \textbf{模板（Template）}与\textbf{模板版本（TemplateVersion）}：一对多关系。一个模板可经历多次修订，每次修订记录为一个模板版本，模板版本通过template\_id外键关联所属模板；
+    \item \textbf{模板版本（TemplateVersion）}与\textbf{论文（Thesis）}：一对多关系。一个模板版本可被多篇论文引用，论文通过template\_version\_id外键关联模板版本，同时记录所属学院；
+    \item \textbf{用户（User）}与\textbf{论文（Thesis）}：一对多关系。一名学生可创建多篇论文，论文通过student\_id外键关联学生用户；
+    \item \textbf{论文（Thesis）}与\textbf{章节（ThesisSection）}：一对多关系。一篇论文包含多个章节（引言、各论文章节、结论、参考文献等），章节通过thesis\_id外键关联所属论文，通过parent\_id自引用实现章节嵌套；
+    \item \textbf{论文（Thesis）}与\textbf{参考文献（ThesisReference）}：一对多关系。一篇论文包含多条参考文献条目；
+    \item \textbf{论文（Thesis）}与\textbf{图片（ThesisImage）}：一对多关系。一篇论文中可嵌入多张图片；
+    \item \textbf{论文（Thesis）}与\textbf{提交记录（Submission）}：一对多关系。一篇论文可有多次提交记录（学生修改后重新提交）；
+    \item \textbf{论文（Thesis）}与\textbf{批注（Annotation）}：一对多关系。一篇论文可有教师添加的多条批注，批注关联到具体章节和教师；
+    \item \textbf{论文（Thesis）}与\textbf{批阅记录（ReviewRecord）}：一对多关系。一篇论文可被多次批阅或退回。
+\end{itemize}
+
+\subsection{数据库表清单}
+
+系统全部数据表及其职责如表\ref{tab:tables}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{数据库表清单}
+    \label{tab:tables}
+    \begin{tabular}{|c|c|p{7cm}|}
+        \hline
+        \textbf{序号} & \textbf{表名} & \textbf{说明} \\
+        \hline
+        1 & sys\_college & 学院信息表，存储学院名称和编号 \\
+        \hline
+        2 & sys\_user & 系统用户表，存储全部用户账号、角色和所属学院 \\
+        \hline
+        3 & template & 论文模板表，存储模板基本信息和启用状态 \\
+        \hline
+        4 & template\_version & 模板版本表，存储每个模板各版本的配置数据（JSONB） \\
+        \hline
+        5 & thesis & 论文主表，存储每篇论文的元信息 \\
+        \hline
+        6 & thesis\_section & 论文章节表，存储章节内容和结构信息 \\
+        \hline
+        7 & thesis\_reference & 参考文献表，存储论文的参考文献条目 \\
+        \hline
+        8 & thesis\_image & 图片资源表，记录上传图片的文件信息 \\
+        \hline
+        9 & submission & 提交记录表，记录学生历次提交信息 \\
+        \hline
+        10 & annotation & 批注表，存储教师在论文指定位置的批注意见 \\
+        \hline
+        11 & review\_record & 批阅记录表，存储教师的评语、分数和操作类型 \\
+        \hline
+        12 & thesis\_section\_draft\_history & 章节草稿历史表，支持自动保存版本回退 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{核心表结构设计}
+
+\subsubsection{用户表（sys\_user）}
+
+用户表是系统权限体系的基础，结构如表\ref{tab:sys_user}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{sys\_user 用户表结构}
+    \label{tab:sys_user}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{字段名} & \textbf{数据类型} & \textbf{约束} & \textbf{说明} \\
+        \hline
+        id & BIGSERIAL & PK & 自增主键 \\
+        \hline
+        username & VARCHAR(50) & NOT NULL, UNIQUE & 登录用户名 \\
+        \hline
+        password & VARCHAR(255) & NOT NULL & BCrypt加密密码 \\
+        \hline
+        real\_name & VARCHAR(50) & NOT NULL & 用户真实姓名 \\
+        \hline
+        role & VARCHAR(20) & NOT NULL, CHECK & ADMIN / STUDENT / TEACHER \\
+        \hline
+        college\_id & BIGINT & FK → sys\_college.id & 所属学院 \\
+        \hline
+        enabled & BOOLEAN & DEFAULT TRUE & 账号启用状态 \\
+        \hline
+        created\_at & TIMESTAMP & DEFAULT NOW & 创建时间 \\
+        \hline
+        updated\_at & TIMESTAMP & DEFAULT NOW & 更新时间 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{论文表（thesis）}
+
+论文表是系统核心业务数据表，结构如表\ref{tab:thesis}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{thesis 论文表结构}
+    \label{tab:thesis}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{字段名} & \textbf{数据类型} & \textbf{约束} & \textbf{说明} \\
+        \hline
+        id & BIGSERIAL & PK & 自增主键 \\
+        \hline
+        student\_id & BIGINT & NOT NULL, FK & 学生用户ID \\
+        \hline
+        template\_version\_id & BIGINT & FK & 关联模板版本 \\
+        \hline
+        title & VARCHAR(500) & NOT NULL & 论文标题 \\
+        \hline
+        status & VARCHAR(20) & NOT NULL, CHECK & DRAFT/COMPLETED/SUBMITTED/REVIEWED/RETURNED/GENERATING \\
+        \hline
+        is\_locked & BOOLEAN & DEFAULT FALSE & 提交后锁定 \\
+        \hline
+        college\_id & BIGINT & FK & 所属学院 \\
+        \hline
+        created\_at & TIMESTAMP & DEFAULT NOW & 创建时间 \\
+        \hline
+        updated\_at & TIMESTAMP & DEFAULT NOW & 更新时间 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+论文状态流转规则为：DRAFT（编辑中）→ COMPLETED（完成）→ SUBMITTED（已提交）→ REVIEWED（已批阅）/ RETURNED（已退回，回到DRAFT）。
+
+\subsubsection{模板版本表（template\_version）}
+
+模板版本表利用PostgreSQL JSONB类型实现灵活的配置存储，结构如表\ref{tab:template_version}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{template\_version 模板版本表结构}
+    \label{tab:template_version}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{字段名} & \textbf{数据类型} & \textbf{约束} & \textbf{说明} \\
+        \hline
+        id & BIGSERIAL & PK & 自增主键 \\
+        \hline
+        template\_id & BIGINT & NOT NULL, FK & 所属模板 \\
+        \hline
+        version\_number & VARCHAR(20) & NOT NULL & 版本号（如1.0、2.0） \\
+        \hline
+        is\_current & BOOLEAN & DEFAULT TRUE & 是否为当前版本 \\
+        \hline
+        cover\_fields & JSONB & NOT NULL & 封面字段配置（JSON数组） \\
+        \hline
+        chapter\_structure & JSONB & NOT NULL & 章节结构定义（JSON数组） \\
+        \hline
+        format\_config & JSONB & NOT NULL & 排版格式参数（JSON对象） \\
+        \hline
+        created\_at & TIMESTAMP & DEFAULT NOW & 创建时间 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+其中\verb|cover_fields|示例：\verb|["title", "author", "studentId", "college", "major", "advisor", "date"]|；\verb|chapter_structure|示例指定章节层级和默认标题；\verb|format_config|包含字体、字号、行距、页边距等排版参数。
+
+\subsection{索引设计}
+
+为保障查询性能，系统在以下字段上建立了索引，如表\ref{tab:indexes}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{数据库索引设计}
+    \label{tab:indexes}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{索引名} & \textbf{表} & \textbf{字段} & \textbf{用途} \\
+        \hline
+        idx\_user\_role & sys\_user & role & 按角色筛选用户 \\
+        \hline
+        idx\_template\_college & template & college\_id & 按学院查询模板 \\
+        \hline
+        idx\_template\_type & template & type & 按类型筛选模板 \\
+        \hline
+        idx\_thesis\_student & thesis & student\_id & 查询学生论文列表 \\
+        \hline
+        idx\_thesis\_status & thesis & status & 按状态筛选论文 \\
+        \hline
+        idx\_section\_thesis & thesis\_section & thesis\_id & 查询论文全部章节 \\
+        \hline
+        idx\_annotation\_thesis & annotation & thesis\_id & 查询论文全部批注 \\
+        \hline
+        idx\_review\_thesis & review\_record & thesis\_id & 查询论文批阅记录 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+索引策略遵循以下原则：高频查询条件字段建索引（如role、status），外键关联字段建索引（如student\_id、thesis\_id、college\_id），避免在频繁更新的字段（如content）上建立索引。当前索引方案可覆盖系统的全部核心查询场景。
+
+\section{开发环境与工程结构}
+
+\subsection{开发环境配置}
+
+\begin{table}[htbp]
+    \centering
+    \caption{开发环境要求}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{工具/环境} & \textbf{版本要求} & \textbf{用途} \\
+        \hline
+        JDK & 21 LTS & Java编译和运行 \\
+        \hline
+        Maven & 3.9+（已内置mvnw） & 项目构建与依赖管理 \\
+        \hline
+        PostgreSQL & 16+ & 关系型数据库 \\
+        \hline
+        Redis & 7+ & 缓存与Token存储 \\
+        \hline
+        Node.js & 18+ & 前端构建和开发服务器 \\
+        \hline
+        TeX Live & 2024+ & LaTeX文档编译（PDF导出） \\
+        \hline
+        Git & 2.40+ & 版本控制 \\
+        \hline
+        IDE & IntelliJ IDEA / VS Code & 代码开发 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{后端工程结构}
+
+后端工程遵循Maven标准目录结构，采用分包分层组织代码：
+
+\begin{lstlisting}[language=Java,caption={后端工程目录结构}]
+thesis-generator/
++-- pom.xml                          # Maven配置（依赖/插件）
++-- mvnw / mvnw.cmd                  # Maven Wrapper（免安装）
++-- src/main/java/com/example/thesisgenerator/
+|   +-- ThesisGeneratorApplication.java  # Spring Boot启动类
+|   +-- common/                       # 通用组件
+|   |   +-- Result.java               # 统一API返回体
+|   |   +-- BusinessException.java    # 业务异常类
+|   |   +-- GlobalExceptionHandler.java # 全局异常处理
+|   +-- config/                       # 配置类
+|   |   +-- CorsConfig.java           # CORS跨域配置
+|   |   +-- RedisConfig.java          # Redis序列化配置
+|   |   +-- JwtUtil.java              # JWT工具类
+|   |   +-- JwtFilter.java            # JWT认证过滤器
+|   |   +-- RoleRequired.java         # 角色权限注解
+|   |   +-- RoleInterceptor.java      # 角色校验拦截器
+|   |   +-- WebConfig.java            # MVC拦截器注册
+|   |   +-- SwaggerConfig.java        # API文档配置
+|   +-- entity/                       # JPA实体类
+|   +-- repository/                   # 数据访问层
+|   +-- dto/                          # 数据传输对象
+|   +-- service/                      # 业务逻辑层
+|   +-- controller/                   # RESTful控制器
++-- src/main/resources/
+|   +-- application.properties        # 应用配置
+|   +-- schema.sql                    # 数据库初始化脚本
++-- src/test/                         # 单元测试
+\end{lstlisting}
+
+该结构的优势为：代码按职责分层（controller/service/repository），再按业务模块分包，层次清晰、职责分明，新成员可快速定位代码位置。
