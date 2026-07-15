@@ -1,1 +1,361 @@
-% 待填写 - 请在此文件中撰写对应章节的 LaTeX 内容
+% ============================================================
+% 4_D_frontend_arch.tex — 前端路由 + 组件架构
+% 编写人：D  日期：2026-07-15
+% ============================================================
+
+\section{前端技术选型与架构概述}
+
+\subsection{技术栈}
+
+前端采用Vue 3生态体系构建单页面应用（SPA），具体选型如下：
+
+\begin{table}[htbp]
+    \centering
+    \caption{前端技术栈选型表}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{类别} & \textbf{技术} & \textbf{版本} \\
+        \hline
+        框架 & Vue 3 (Composition API) & 3.4+ \\
+        \hline
+        构建工具 & Vite & 5.0+ \\
+        \hline
+        语言 & TypeScript & 5.3+ \\
+        \hline
+        UI组件库 & Element Plus & 2.5+ \\
+        \hline
+        路由 & Vue Router & 4.3+ \\
+        \hline
+        HTTP客户端 & Axios & 1.6+ \\
+        \hline
+        状态管理 & Pinia & 2.1+ \\
+        \hline
+        富文本编辑器 & Tiptap (基于ProseMirror) & 2.0+ \\
+        \hline
+        代码规范 & ESLint + Prettier & 8.0+ / 3.0+ \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{选型理由}
+
+\begin{itemize}
+    \item \textbf{Vue 3 + Composition API}：组合式API提供更好的逻辑复用能力和TypeScript支持；\texttt{<script setup>}语法糖减少样板代码，提高开发效率。
+    \item \textbf{Vite}：基于ESM的开发服务器，冷启动速度远快于Webpack；HMR毫秒级响应，提升开发体验；生产构建基于Rollup，产物体积小。
+    \item \textbf{Element Plus}：Vue 3生态最成熟的桌面端UI库，提供表格、表单、对话框、树形控件等全套组件，适合论文编辑器的复杂交互场景。
+    \item \textbf{Tiptap}：基于ProseMirror的现代化富文本编辑器框架，支持自定义扩展（参考文献引用、图片上传、表格编辑），完全可控的Schema设计，渲染与数据分离，便于导出DOCX/PDF。
+    \item \textbf{Pinia}：Vue官方推荐的状态管理库，TypeScript原生支持，模块化Store设计，比Vuex更简洁。
+\end{itemize}
+
+% ============================================================
+\section{前端工程目录结构}
+
+\begin{lstlisting}[language=JavaScript]
+thesis-generator-web/
+├── public/                     # 静态资源
+│   └── favicon.ico
+├── src/
+│   ├── api/                    # API接口封装层
+│   │   ├── request.ts          # Axios实例 + 请求/响应拦截器
+│   │   ├── auth.ts             # 认证相关API
+│   │   ├── paper.ts            # 论文CRUD API
+│   │   ├── section.ts          # 章节API
+│   │   ├── template.ts         # 模板API
+│   │   ├── reference.ts        # 参考文献API
+│   │   ├── export.ts           # 导出API
+│   │   └── college.ts          # 学院API
+│   ├── assets/                 # 样式/图片/字体
+│   │   ├── styles/
+│   │   │   ├── variables.scss  # SCSS变量（主题色、间距等）
+│   │   │   ├── global.scss     # 全局样式
+│   │   │   └── editor.scss     # 编辑器专属样式
+│   │   └── images/
+│   ├── components/             # 全局共享组件
+│   │   ├── common/             # 通用组件（Header、Loading等）
+│   │   ├── editor/             # 编辑器组件
+│   │   │   ├── EditorToolbar.vue    # 编辑器工具栏
+│   │   │   ├── SectionTree.vue      # 章节树组件
+│   │   │   ├── ReferencePanel.vue   # 参考文献管理面板
+│   │   │   ├── ImageUploader.vue    # 图片上传组件
+│   │   │   └── TableEditor.vue      # 表格编辑组件
+│   │   └── preview/
+│   │       └── PaperPreview.vue
+│   ├── composables/            # 组合式函数（逻辑复用）
+│   │   ├── useAuth.ts          # 认证逻辑
+│   │   ├── useAutoSave.ts      # 自动保存逻辑
+│   │   ├── useEditor.ts        # 编辑器核心逻辑
+│   │   └── useExport.ts        # 导出逻辑
+│   ├── layouts/                # 布局组件
+│   │   ├── DefaultLayout.vue   # 默认布局（Header+内容+Footer）
+│   │   ├── EditorLayout.vue    # 编辑器三栏布局
+│   │   └── AuthLayout.vue      # 认证页居中布局
+│   ├── router/                 # 路由配置
+│   │   └── index.ts
+│   ├── stores/                 # Pinia状态管理
+│   │   ├── auth.ts             # 用户认证状态
+│   │   ├── paper.ts            # 当前论文状态
+│   │   └── editor.ts           # 编辑器状态（当前章节、脏数据标记等）
+│   ├── types/                  # TypeScript类型定义
+│   │   ├── paper.ts
+│   │   ├── section.ts
+│   │   ├── template.ts
+│   │   └── api.ts
+│   ├── utils/                  # 工具函数
+│   │   ├── token.ts            # Token存取
+│   │   └── validator.ts        # 表单校验规则
+│   ├── views/                  # 页面视图组件
+│   │   ├── auth/
+│   │   │   ├── Login.vue
+│   │   │   └── Register.vue
+│   │   ├── paper/
+│   │   │   ├── PaperList.vue       # 论文列表首页
+│   │   │   ├── PaperCreate.vue     # 论文创建向导
+│   │   │   └── PaperEditor.vue     # 论文编辑器主页面
+│   │   ├── preview/
+│   │   │   └── PreviewPage.vue     # 预览页面
+│   │   └── user/
+│   │       ├── Profile.vue         # 个人中心
+│   │       └── ExportHistory.vue   # 导出历史
+│   ├── App.vue
+│   └── main.ts                # 入口文件
+├── vite.config.ts
+├── tsconfig.json
+├── package.json
+└── .env.development / .env.production
+\end{lstlisting}
+
+% ============================================================
+\section{前端路由设计}
+
+\subsection{路由表定义}
+
+系统采用Vue Router 4的嵌套路由方案，结合路由元信息（meta）实现鉴权控制和布局切换。
+
+\begin{table}[htbp]
+    \centering
+    \caption{前端路由表}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{路径} & \textbf{页面组件} & \textbf{布局} & \textbf{鉴权} \\
+        \hline
+        \texttt{/login} & Login & AuthLayout & 否 \\
+        \hline
+        \texttt{/register} & Register & AuthLayout & 否 \\
+        \hline
+        \texttt{/papers} & PaperList & DefaultLayout & 是 \\
+        \hline
+        \texttt{/papers/create} & PaperCreate & DefaultLayout & 是 \\
+        \hline
+        \texttt{/editor/:paperId} & PaperEditor & EditorLayout & 是 \\
+        \hline
+        \texttt{/preview/:paperId} & PreviewPage & DefaultLayout & 是 \\
+        \hline
+        \texttt{/profile} & Profile & DefaultLayout & 是 \\
+        \hline
+        \texttt{/export-history} & ExportHistory & DefaultLayout & 是 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{路由鉴权守卫}
+
+\begin{lstlisting}[language=JavaScript]
+// router/index.ts
+router.beforeEach((to, from, next) => {
+    const token = localStorage.getItem('token')
+    if (to.meta.requiresAuth && !token) {
+        next({ path: '/login', query: { redirect: to.fullPath } })
+    } else if (token && (to.path === '/login' || to.path === '/register')) {
+        next({ path: '/papers' })
+    } else {
+        next()
+    }
+})
+\end{lstlisting}
+
+所有页面组件采用动态 import() 实现路由级代码分割，减少首屏加载体积。
+
+% ============================================================
+\section{前端组件架构设计}
+
+\subsection{组件分层架构}
+
+前端组件按职责划分为四层：
+
+\begin{enumerate}
+    \item \textbf{页面层（Views）}：路由级页面组件，负责页面整体布局编排、调用API获取数据、协调子组件交互。不包含具体的UI渲染逻辑。
+    \item \textbf{业务组件层（Business Components）}：承载特定业务逻辑的复合组件，如章节树（SectionTree）、参考文献面板（ReferencePanel）、导出对话框（ExportDialog）。这些组件内部管理自身状态，通过Props接收数据、Emits向外传递事件。
+    \item \textbf{通用组件层（Common Components）}：无业务耦合的纯UI组件，如全局Header、Loading遮罩、确认对话框。可在多个页面复用。
+    \item \textbf{基础组件层（UI Library）}：直接使用Element Plus提供的按钮、输入框、表格、对话框、树形控件等原子级组件。
+\end{enumerate}
+
+\subsection{核心组件通信模式}
+
+\begin{itemize}
+    \item \textbf{父子通信}：父组件通过Props传递数据给子组件，子组件通过 defineEmits 向父组件发送事件通知。适用于章节树→编辑器的章节切换、工具栏→编辑器的格式操作。
+    \item \textbf{全局状态（Pinia Store）}：跨页面共享的数据使用Pinia管理。主要包括：
+    \begin{itemize}
+        \item authStore：当前登录用户信息、Token、登录/登出操作；
+        \item paperStore：当前论文基本信息、章节列表、模板信息；
+        \item editorStore：当前编辑章节ID、脏数据标记、自动保存状态、编辑器实例引用。
+    \end{itemize}
+    \item \textbf{依赖注入（provide/inject）}：编辑器内部深层嵌套的组件通过provide/inject获取编辑器实例和上下文配置，避免Prop逐层传递。
+\end{itemize}
+
+\subsection{编辑器组件架构}
+
+编辑器是学生端最复杂的业务组件，采用Tiptap + 自定义扩展的架构：
+
+\begin{enumerate}
+    \item \textbf{Tiptap Editor实例}：通过 useEditor() 组合式函数创建，配置插件扩展集（Bold、Italic、Heading、Image、Table、ReferenceCitation等）。
+    \item \textbf{自定义Extension}：开发 ReferenceCitation 扩展节点，在编辑器文档中以inline节点存储引用ID，渲染为 [n] 标记，导出时转换为格式化引用。
+    \item \textbf{工具栏（EditorToolbar）}：通过Tiptap的 editor.chain().focus() API调用编辑器命令，每个按钮绑定对应命令，高亮当前激活状态。
+    \item \textbf{章节树（SectionTree）}：使用Element Plus的Tree组件，支持拖拽排序（node-drop事件），右键上下文菜单（添加/删除/重命名章节）。
+    \item \textbf{自动保存（useAutoSave）}：监听编辑器onUpdate事件，使用防抖（debounce）机制，30秒无新修改后自动触发保存API；页面关闭前通过beforeunload事件检测脏数据。
+    \item \textbf{参考文献面板（ReferencePanel）}：侧边栏面板，使用Element Plus Table展示文献列表，Dialog承载添加/编辑表单。与编辑器通过Pinia Store通信，正文引用标记与文献列表保持同步。
+\end{enumerate}
+
+\subsection{组件状态生命周期}
+
+以论文编辑器页面为例，组件状态流转如下：
+
+\begin{enumerate}
+    \item \textbf{页面挂载阶段}：
+    \begin{itemize}
+        \item 从路由参数获取 paperId；
+        \item 调用 \texttt{GET /api/v1/papers/:paperId} 获取论文基础信息，存入 paperStore；
+        \item 调用 \texttt{GET /api/v1/papers/:paperId/sections} 获取章节树，存入 editorStore；
+        \item 初始化Tiptap编辑器实例，加载第一个章节内容；
+        \item 启动自动保存监听。
+    \end{itemize}
+    \item \textbf{编辑交互阶段}：
+    \begin{itemize}
+        \item 切换章节 → 保存当前章节 → 加载目标章节内容至编辑器；
+        \item 拖拽排序 → 更新本地章节顺序 → 发送 PUT 请求更新后端；
+        \item 添加章节 → 弹出命名对话框 → 确认后创建章节节点 → 刷新章节树；
+        \item 插入引用 → 打开参考文献面板 → 选择文献 → 光标处插入引用标记。
+    \end{itemize}
+    \item \textbf{页面卸载阶段}：
+    \begin{itemize}
+        \item 检查脏数据标记，若有未保存修改则弹窗提示；
+        \item 执行最终保存；
+        \item 销毁Tiptap编辑器实例，释放内存；
+        \item 清理Pinia Store中的临时状态。
+    \end{itemize}
+\end{enumerate}
+
+% ============================================================
+\section{Axios封装与API层设计}
+
+\subsection{请求/响应拦截器}
+
+\begin{lstlisting}[language=JavaScript]
+// api/request.ts
+import axios from 'axios'
+import { ElMessage } from 'element-plus'
+import router from '@/router'
+
+const request = axios.create({
+    baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
+    timeout: 15000,
+})
+
+request.interceptors.request.use((config) => {
+    const token = localStorage.getItem('token')
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+})
+
+request.interceptors.response.use(
+    (response) => response.data,
+    (error) => {
+        if (error.response?.status === 401) {
+            localStorage.removeItem('token')
+            router.push('/login')
+            ElMessage.error('登录已过期，请重新登录')
+        } else {
+            ElMessage.error(error.response?.data?.message || '请求失败')
+        }
+        return Promise.reject(error)
+    }
+)
+
+export default request
+\end{lstlisting}
+
+\subsection{学生端API接口清单}
+
+\begin{table}[htbp]
+    \centering
+    \caption{学生端调用API接口汇总}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{方法} & \textbf{路径} & \textbf{说明} \\
+        \hline
+        POST & \texttt{/api/v1/auth/register} & 学生注册 \\
+        POST & \texttt{/api/v1/auth/login} & 学生登录 \\
+        POST & \texttt{/api/v1/auth/logout} & 退出登录 \\
+        \hline
+        GET & \texttt{/api/v1/papers} & 获取论文列表 \\
+        POST & \texttt{/api/v1/papers} & 新建论文 \\
+        GET & \texttt{/api/v1/papers/:id} & 获取论文详情 \\
+        PUT & \texttt{/api/v1/papers/:id} & 更新论文信息 \\
+        DELETE & \texttt{/api/v1/papers/:id} & 删除论文 \\
+        \hline
+        GET & \texttt{/api/v1/papers/:id/sections} & 获取章节树 \\
+        POST & \texttt{/api/v1/papers/:id/sections} & 新增章节 \\
+        GET & \texttt{/api/v1/papers/:id/sections/:sid} & 获取章节内容 \\
+        PUT & \texttt{/api/v1/papers/:id/sections/:sid} & 保存章节内容 \\
+        PUT & \texttt{/api/v1/papers/:id/sections/order} & 更新章节排序 \\
+        DELETE & \texttt{/api/v1/papers/:id/sections/:sid} & 删除章节 \\
+        \hline
+        GET & \texttt{/api/v1/templates} & 获取模板列表 \\
+        GET & \texttt{/api/v1/templates/:id} & 获取模板详情 \\
+        \hline
+        GET & \texttt{/api/v1/references} & 获取参考文献列表 \\
+        POST & \texttt{/api/v1/references} & 新增参考文献 \\
+        PUT & \texttt{/api/v1/references/:id} & 编辑参考文献 \\
+        DELETE & \texttt{/api/v1/references/:id} & 删除参考文献 \\
+        \hline
+        POST & \texttt{/api/v1/papers/:id/export} & 提交导出任务 \\
+        GET & \texttt{/api/v1/export/:taskId/status} & 查询导出进度 \\
+        GET & \texttt{/api/v1/export/history} & 获取导出历史 \\
+        \hline
+        POST & \texttt{/api/v1/images/upload} & 上传图片 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+% ============================================================
+\section{学生端核心模块概要设计}
+
+\subsection{论文创建向导流程}
+
+\begin{enumerate}
+    \item 用户在论文列表页点击"新建论文"，前端弹出 PaperCreate 对话框或跳转独立页面；
+    \item 步骤一：输入论文标题，选择所属学院。学院列表通过 API 获取并在下拉框中展示；
+    \item 步骤二：根据所选学院ID获取匹配模板列表。前端以卡片形式展示模板名称、封面缩略图、适用说明；
+    \item 步骤三：用户确认创建，前端组装论文信息（标题、学院ID、模板ID）发送 POST 请求；
+    \item 后端返回新论文ID，前端跳转至编辑器页面 /editor/:paperId。
+\end{enumerate}
+
+\subsection{编辑器核心逻辑}
+
+\begin{enumerate}
+    \item 页面加载：获取论文数据 → 获取章节树 → 初始化编辑器 → 加载默认章节内容 → 启动自动保存；
+    \item 章节切换：保存当前章节（若有修改） → 发送 PUT 请求 → 获取新章节内容 GET → 重置编辑器内容；
+    \item 章节拖拽排序：监听 node-drop 事件 → 本地更新顺序 → 发送 PUT 请求提交新顺序；
+    \item 自动保存：编辑器 onUpdate 事件 → 防抖30秒 → 标记脏数据 → 发送 PUT 请求 → 更新最后保存时间显示；
+    \item 图片上传：用户粘贴或拖拽图片 → 前端压缩（可选） → POST 上传 → 返回URL → 插入编辑器。
+\end{enumerate}
+
+\subsection{论文预览}
+
+\begin{enumerate}
+    \item 用户点击"预览"按钮，前端调用 API 获取预览数据；
+    \item 后端根据论文模板样式，将章节内容渲染为HTML；
+    \item 前端在新标签页展示渲染后的HTML，页面布局模拟A4纸张效果；
+    \item 预览页支持翻页浏览、缩放查看功能。
+\end{enumerate}

@@ -78,6 +78,12 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- 加密（仅密码加密，非完整Spring Security） -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+
         <!-- Swagger/Knife4j API文档 -->
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
