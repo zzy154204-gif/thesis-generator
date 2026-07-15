@@ -80,7 +80,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Plus } from '@element-design/icons-vue'
+import { Search, Plus } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { usePaperStore } from '@/stores/paper'
 import { deletePaper } from '@/api/paper'
