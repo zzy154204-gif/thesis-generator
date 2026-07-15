@@ -1,0 +1,1718 @@
+% ============================================
+% 在线论文文档自动生成工具 — 概要设计说明书（完整版）
+% ============================================
+
+\documentclass{../../softeng}
+
+\begin{document}
+
+\doccover{概要设计说明书}
+{在线论文文档自动生成工具}
+{V2026.07}
+
+\tableofcontents
+\newpage
+
+\begin{revrecord}
+V1.0 & 2026-07-16 & 全组 & 全组 & 初稿完成 \
+\hline
+\end{revrecord}
+% ============================================
+% 第1章：系统总体架构 + 技术选型 + 数据库设计
+% 负责人：A
+% ============================================
+
+\section{系统总体架构}
+
+\subsection{架构设计原则}
+
+本系统遵循以下架构设计原则：
+
+\begin{enumerate}
+    \item \textbf{前后端分离}：前端采用Vue 3单页应用（SPA），后端采用Spring Boot RESTful API，前后端通过HTTP/JSON协议通信，实现彻底的前后端解耦，便于独立开发、测试和部署；
+    \item \textbf{分层架构}：后端采用Controller-Service-Repository三层架构，各层职责明确、单向依赖，上层调用下层接口，下层不感知上层逻辑；
+    \item \textbf{无状态服务}：API服务不持有会话状态，认证信息通过JWT Token在客户端和服务端之间传递，Token缓存至Redis以保证分布式环境下的一致性；
+    \item \textbf{数据一致性}：核心业务数据采用关系型数据库PostgreSQL存储，利用外键约束、事务管理和数据库索引保证数据完整性和查询性能；
+    \item \textbf{缓存策略}：高频读取的热点数据（模板配置、用户会话）缓存在Redis中，减少数据库查询压力，提升系统响应速度。
+\end{enumerate}
+
+\subsection{B/S三层架构}
+
+系统采用经典的B/S（Browser/Server）三层架构模型，从逻辑上划分为表现层、业务逻辑层和数据访问层，如图\ref{fig:bs_arch}所示。
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tabular}{|c|}
+        \hline
+        \textbf{表现层（Presentation Layer）} \\
+        Vue 3 + Element Plus + Axios \\
+        浏览器端渲染，响应式布局 \\
+        \hline
+        \textbf{$\uparrow$ HTTP/JSON / JWT Token $\downarrow$} \\
+        \hline
+        \textbf{业务逻辑层（Business Logic Layer）} \\
+        Spring Boot 4.1.0 + Spring MVC \\
+        Controller → Service → Repository \\
+        JWT认证 · 角色鉴权 · 业务校验 · 文档生成 \\
+        \hline
+        \textbf{$\uparrow$ JDBC / Redis Protocol $\downarrow$} \\
+        \hline
+        \textbf{数据访问层（Data Access Layer）} \\
+        PostgreSQL 16（业务数据）\quad Redis 7（缓存/Token） \\
+        文件系统（图片/DOCX/PDF） \\
+        \hline
+    \end{tabular}
+    \caption{B/S三层架构示意图}
+    \label{fig:bs_arch}
+\end{figure}
+
+各层职责说明如下：
+
+\begin{itemize}
+    \item \textbf{表现层}：负责用户界面展示和交互，基于Vue 3 Composition API构建组件化页面，使用Element Plus组件库统一UI风格，通过Axios封装HTTP请求与后端API通信。页面包括登录注册、论文编辑、模板管理、批阅审核等功能模块；
+    \item \textbf{业务逻辑层}：作为系统核心，基于Spring Boot框架实现全部业务逻辑。Controller层负责接收HTTP请求、参数校验和响应格式化；Service层封装业务规则（用户认证、论文管理、模板控制、文档导出、批注批阅等）；Repository层通过Spring Data JPA完成数据持久化操作；
+    \item \textbf{数据访问层}：PostgreSQL存储全部结构化业务数据（用户、论文、模板、批注等），Redis提供Token缓存和热点数据缓存服务，服务器本地文件系统存储上传的图片资源和生成的DOCX/PDF文档文件。
+\end{itemize}
+
+\subsection{前后端分离交互流程}
+
+前后端分离架构下的典型请求处理流程如下：
+
+\begin{enumerate}
+    \item 用户在浏览器中操作，Vue 3前端通过Axios发起HTTP请求（GET/POST/PUT/DELETE），请求头携带JWT Token（格式：\verb|Authorization: Bearer <token>|）；
+    \item 请求到达Spring Boot内嵌Tomcat服务器，首先经过JWT过滤器（JwtFilter）解析Token并将用户信息（userId、username、role）注入请求上下文；
+    \item 请求分发至对应的Controller方法，Spring MVC完成参数绑定和JSR-303校验（@Valid）；
+    \item Controller调用Service层执行业务逻辑，Service通过JPA Repository与PostgreSQL数据库交互，必要时读写Redis缓存；
+    \item Service将处理结果返回Controller，Controller通过统一返回体Result封装响应数据（code、message、data）返回前端；
+    \item 前端根据响应状态码和数据进行页面渲染或错误提示。
+\end{enumerate}
+
+\subsection{系统模块划分}
+
+系统按功能划分为六大核心模块，如表\ref{tab:modules}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{系统功能模块划分}
+    \label{tab:modules}
+    \begin{tabular}{|c|c|p{7cm}|}
+        \hline
+        \textbf{模块编号} & \textbf{模块名称} & \textbf{功能说明} \\
+        \hline
+        M1 & 认证与权限管理模块 & 用户注册、登录、登出，JWT Token签发与验证，角色权限控制（ADMIN/STUDENT/TEACHER），密码BCrypt加密存储 \\
+        \hline
+        M2 & 模板与论文管理模块 & 管理员按学院管理论文模板（封面字段、章节结构、格式参数），支持模板版本管理；学生创建论文、在线编辑章节内容（富文本）、草稿自动保存与手动保存 \\
+        \hline
+        M3 & 参考文献与图片管理模块 & 学生逐条录入参考文献信息（支持BibTeX批量导入），上传论文插图（格式/大小校验），图片内联展示 \\
+        \hline
+        M4 & 文档导出模块 & 基于论文内容+模板格式配置，服务端异步生成标准DOCX（Apache POI）和PDF（LaTeX编译）文档，提供下载 \\
+        \hline
+        M5 & 前端交互与UI模块 & Vue 3组件化页面构建，包括学生端（论文编辑、预览、导出、提交）、教师端（批注、评阅、退回）、管理员端（模板管理、学院管理） \\
+        \hline
+        M6 & 提交批阅与缓存部署模块 & 学生论文提交/教师批阅/退回重提完整流程，Redis缓存策略，系统一键部署配置（Docker Compose） \\
+        \hline
+    \end{tabular}
+\end{table}
+
+六大模块的依赖关系为：M1认证鉴权模块为所有模块提供统一的身份认证和权限校验基础；M2模板论文模块是核心业务模块，M3参考文献模块和M4导出模块依赖于M2的论文数据；M5前端模块为M1-M4提供用户操作界面；M6提交批阅模块串联学生、教师角色的协同工作流。
+
+\section{技术选型}
+
+\subsection{技术栈总览}
+
+系统技术栈如表\ref{tab:techstack}所示，每一项技术的选择均基于明确的技术理由和项目约束。
+
+\begin{table}[htbp]
+    \centering
+    \caption{系统技术栈总览}
+    \label{tab:techstack}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{层次} & \textbf{技术} & \textbf{版本} \\
+        \hline
+        后端框架 & Spring Boot & 4.1.0 \\
+        \hline
+        编程语言 & Java & 21 (LTS) \\
+        \hline
+        Web框架 & Spring Web MVC (spring-boot-starter-webmvc) & 4.1.0 \\
+        \hline
+        ORM框架 & Spring Data JPA (Hibernate) & 4.1.0 \\
+        \hline
+        关系型数据库 & PostgreSQL & 16+ \\
+        \hline
+        缓存中间件 & Redis & 7+ \\
+        \hline
+        认证 & JJWT (io.jsonwebtoken) & 0.12.6 \\
+        \hline
+        密码加密 & Spring Security Crypto (BCrypt) & 6.x \\
+        \hline
+        API文档 & Knife4j (Swagger/OpenAPI 3) & 4.5.0 \\
+        \hline
+        前端框架 & Vue 3 (Composition API) & 3.x \\
+        \hline
+        构建工具 & Vite & 5.x \\
+        \hline
+        UI组件库 & Element Plus & 2.x \\
+        \hline
+        HTTP客户端 & Axios & 1.x \\
+        \hline
+        前端路由 & Vue Router & 4.x \\
+        \hline
+        DOCX生成 & Apache POI (poi-ooxml) & 5.x \\
+        \hline
+        PDF生成 & LaTeX (xelatex) + 模板类 & TeX Live 2024+ \\
+        \hline
+        构建管理 & Maven (mvnw wrapper) & 3.9+ \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{后端技术选型分析}
+
+\subsubsection{Spring Boot 4.1.0 + Java 21}
+
+Spring Boot 4.1.0是Spring生态最新的稳定主版本，基于Java 21 LTS（长期支持版本）构建。选择理由如下：
+
+\begin{itemize}
+    \item \textbf{约定优于配置}：自动配置机制大幅减少XML配置，通过application.properties管理全部参数，开发效率高；
+    \item \textbf{内嵌Tomcat}：无需单独部署Web容器，应用打包为可执行JAR，配合Maven Wrapper实现零环境依赖启动；
+    \item \textbf{生态成熟}：与Spring Data JPA、Spring Web MVC、Spring Security Crypto等子项目无缝集成；
+    \item \textbf{Java 21特性}：支持虚拟线程（Virtual Threads）、记录类（Records）、模式匹配（Pattern Matching）等现代语言特性，提升代码可读性和并发处理能力；
+    \item \textbf{生产就绪}：内置Actuator健康检查、Metrics监控端点，便于运维巡检。
+\end{itemize}
+
+\subsubsection{Spring Data JPA + PostgreSQL 16}
+
+数据持久化层采用JPA（Java Persistence API）规范实现，选择理由：
+
+\begin{itemize}
+    \item \textbf{对象关系映射}：Java实体类通过注解直接映射数据库表结构，减少手写SQL，提高开发效率；
+    \item \textbf{方法命名查询}：Spring Data JPA通过Repository接口的方法命名规则自动生成查询SQL，常见CRUD操作无需编写JPQL；
+    \item \textbf{数据库迁移友好}：通过spring.jpa.hibernate.ddl-auto=validate在校验模式下确保实体定义与数据库结构一致；
+    \item \textbf{PostgreSQL优势}：支持JSONB类型（模板配置的灵活存储）、丰富的索引类型（B-tree、GIN）、ACID事务保证、成熟的并发控制（MVCC）；
+    \item \textbf{外键约束}：利用数据库级外键保证引用完整性，防止数据孤岛。
+\end{itemize}
+
+\subsubsection{Redis 7}
+
+Redis作为缓存层和Token存储，选择理由：
+
+\begin{itemize}
+    \item \textbf{高性能}：纯内存操作，读写延迟在毫秒级，单机QPS可达10万+；
+    \item \textbf{数据结构丰富}：String类型存储Token和序列化对象（JSON），支持设置过期时间（TTL），天然适合JWT Token的24小时过期管理；
+    \item \textbf{轻量级}：部署和维护成本低，实训环境中单实例即可满足需求。
+\end{itemize}
+
+\subsection{认证与安全方案}
+
+系统未引入Spring Security全套框架，而是采用轻量级的自定义认证方案：
+
+\begin{itemize}
+    \item \textbf{JWT Token（jjwt 0.12.6）}：无状态Token认证，服务端不保存会话，Token自带用户ID、用户名、角色信息，通过HMAC-SHA256签名防篡改，有效期24小时；
+    \item \textbf{BCrypt密码加密（spring-security-crypto）}：单向哈希加盐算法，相同密码每次加密结果不同，有效防御彩虹表攻击，work factor默认10轮；
+    \item \textbf{角色级权限控制}：自定义@RoleRequired注解配合Spring MVC拦截器，在Controller方法级别声明所需的角色（ADMIN/STUDENT/TEACHER），拦截器在请求进入Controller前校验当前用户角色是否在允许列表中；
+    \item \textbf{前后端双重校验}：前端路由守卫隐藏无权限页面入口，后端API强制校验JWT Token和角色权限，防止绕过前端直接调用API。
+\end{itemize}
+
+\subsection{前端技术选型分析}
+
+\subsubsection{Vue 3 + Vite}
+
+Vue 3采用Composition API编程范式，相比Options API具有更好的逻辑复用性和TypeScript支持；Vite作为下一代前端构建工具，利用ES模块原生支持实现极速冷启动和热更新（HMR），开发体验显著优于Webpack。Element Plus是基于Vue 3的成熟UI组件库，提供表单、表格、对话框、上传、富文本等丰富的企业级组件，降低前端开发工作量。
+
+\subsubsection{Axios + Vue Router}
+
+Axios封装HTTP请求，统一配置Base URL、请求超时、拦截器（请求前自动注入JWT Token，响应时统一处理401未授权跳转）；Vue Router 4实现前端单页路由，通过嵌套路由组织页面层级（Layout布局页→功能子页面），路由守卫在页面切换前校验用户登录状态和角色权限。
+
+\subsection{文档生成方案}
+
+文档导出是本系统的核心功能之一，采用两种技术路径：
+
+\begin{itemize}
+    \item \textbf{DOCX生成（Apache POI）}：Apache POI是Java领域操作Microsoft Office文档的事实标准库，通过poi-ooxml模块可编程创建DOCX文件。服务端根据论文HTML内容解析文本段落、样式标记、图片引用，结合模板格式配置（字体、字号、行距、页边距），按序构建XWPFDocument对象并输出DOCX字节流；
+    \item \textbf{PDF生成（LaTeX + xelatex）}：利用已有的LaTeX模板类（softeng.cls）和编译流程，服务端将论文内容转换为LaTeX源码文件，调用xelatex编译器生成高质量PDF文档。LaTeX排版引擎在数学公式、参考文献格式化、目录自动生成方面具有不可替代的优势。
+\end{itemize}
+
+\section{数据库设计}
+
+\subsection{数据库概述}
+
+系统数据库名称为\verb|thesis_generator|，使用PostgreSQL 16关系型数据库。数据库设计遵循第三范式（3NF），核心实体间通过外键建立关联约束，保证数据引用完整性。共设计10张核心数据表和1张辅助历史记录表。
+
+\subsection{实体关系设计}
+
+系统的核心实体及其关系如下：
+
+\begin{itemize}
+    \item \textbf{学院（College）}与\textbf{用户（User）}：一对多关系。一个学院包含多名用户（学生和教师），用户通过college\_id外键关联所属学院；
+    \item \textbf{学院（College）}与\textbf{模板（Template）}：一对多关系。一个学院下可有多个论文模板，模板通过college\_id外键关联所属学院；
+    \item \textbf{模板（Template）}与\textbf{模板版本（TemplateVersion）}：一对多关系。一个模板可经历多次修订，每次修订记录为一个模板版本，模板版本通过template\_id外键关联所属模板；
+    \item \textbf{模板版本（TemplateVersion）}与\textbf{论文（Thesis）}：一对多关系。一个模板版本可被多篇论文引用，论文通过template\_version\_id外键关联模板版本，同时记录所属学院；
+    \item \textbf{用户（User）}与\textbf{论文（Thesis）}：一对多关系。一名学生可创建多篇论文，论文通过student\_id外键关联学生用户；
+    \item \textbf{论文（Thesis）}与\textbf{章节（ThesisSection）}：一对多关系。一篇论文包含多个章节（引言、各论文章节、结论、参考文献等），章节通过thesis\_id外键关联所属论文，通过parent\_id自引用实现章节嵌套；
+    \item \textbf{论文（Thesis）}与\textbf{参考文献（ThesisReference）}：一对多关系。一篇论文包含多条参考文献条目；
+    \item \textbf{论文（Thesis）}与\textbf{图片（ThesisImage）}：一对多关系。一篇论文中可嵌入多张图片；
+    \item \textbf{论文（Thesis）}与\textbf{提交记录（Submission）}：一对多关系。一篇论文可有多次提交记录（学生修改后重新提交）；
+    \item \textbf{论文（Thesis）}与\textbf{批注（Annotation）}：一对多关系。一篇论文可有教师添加的多条批注，批注关联到具体章节和教师；
+    \item \textbf{论文（Thesis）}与\textbf{批阅记录（ReviewRecord）}：一对多关系。一篇论文可被多次批阅或退回。
+\end{itemize}
+
+\subsection{数据库表清单}
+
+系统全部数据表及其职责如表\ref{tab:tables}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{数据库表清单}
+    \label{tab:tables}
+    \begin{tabular}{|c|c|p{7cm}|}
+        \hline
+        \textbf{序号} & \textbf{表名} & \textbf{说明} \\
+        \hline
+        1 & sys\_college & 学院信息表，存储学院名称和编号 \\
+        \hline
+        2 & sys\_user & 系统用户表，存储全部用户账号、角色和所属学院 \\
+        \hline
+        3 & template & 论文模板表，存储模板基本信息和启用状态 \\
+        \hline
+        4 & template\_version & 模板版本表，存储每个模板各版本的配置数据（JSONB） \\
+        \hline
+        5 & thesis & 论文主表，存储每篇论文的元信息 \\
+        \hline
+        6 & thesis\_section & 论文章节表，存储章节内容和结构信息 \\
+        \hline
+        7 & thesis\_reference & 参考文献表，存储论文的参考文献条目 \\
+        \hline
+        8 & thesis\_image & 图片资源表，记录上传图片的文件信息 \\
+        \hline
+        9 & submission & 提交记录表，记录学生历次提交信息 \\
+        \hline
+        10 & annotation & 批注表，存储教师在论文指定位置的批注意见 \\
+        \hline
+        11 & review\_record & 批阅记录表，存储教师的评语、分数和操作类型 \\
+        \hline
+        12 & thesis\_section\_draft\_history & 章节草稿历史表，支持自动保存版本回退 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{核心表结构设计}
+
+\subsubsection{用户表（sys\_user）}
+
+用户表是系统权限体系的基础，结构如表\ref{tab:sys_user}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{sys\_user 用户表结构}
+    \label{tab:sys_user}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{字段名} & \textbf{数据类型} & \textbf{约束} & \textbf{说明} \\
+        \hline
+        id & BIGSERIAL & PK & 自增主键 \\
+        \hline
+        username & VARCHAR(50) & NOT NULL, UNIQUE & 登录用户名 \\
+        \hline
+        password & VARCHAR(255) & NOT NULL & BCrypt加密密码 \\
+        \hline
+        real\_name & VARCHAR(50) & NOT NULL & 用户真实姓名 \\
+        \hline
+        role & VARCHAR(20) & NOT NULL, CHECK & ADMIN / STUDENT / TEACHER \\
+        \hline
+        college\_id & BIGINT & FK → sys\_college.id & 所属学院 \\
+        \hline
+        enabled & BOOLEAN & DEFAULT TRUE & 账号启用状态 \\
+        \hline
+        created\_at & TIMESTAMP & DEFAULT NOW & 创建时间 \\
+        \hline
+        updated\_at & TIMESTAMP & DEFAULT NOW & 更新时间 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{论文表（thesis）}
+
+论文表是系统核心业务数据表，结构如表\ref{tab:thesis}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{thesis 论文表结构}
+    \label{tab:thesis}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{字段名} & \textbf{数据类型} & \textbf{约束} & \textbf{说明} \\
+        \hline
+        id & BIGSERIAL & PK & 自增主键 \\
+        \hline
+        student\_id & BIGINT & NOT NULL, FK & 学生用户ID \\
+        \hline
+        template\_version\_id & BIGINT & FK & 关联模板版本 \\
+        \hline
+        title & VARCHAR(500) & NOT NULL & 论文标题 \\
+        \hline
+        status & VARCHAR(20) & NOT NULL, CHECK & DRAFT/COMPLETED/SUBMITTED/REVIEWED/RETURNED/GENERATING \\
+        \hline
+        is\_locked & BOOLEAN & DEFAULT FALSE & 提交后锁定 \\
+        \hline
+        college\_id & BIGINT & FK & 所属学院 \\
+        \hline
+        created\_at & TIMESTAMP & DEFAULT NOW & 创建时间 \\
+        \hline
+        updated\_at & TIMESTAMP & DEFAULT NOW & 更新时间 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+论文状态流转规则为：DRAFT（编辑中）→ COMPLETED（完成）→ SUBMITTED（已提交）→ REVIEWED（已批阅）/ RETURNED（已退回，回到DRAFT）。
+
+\subsubsection{模板版本表（template\_version）}
+
+模板版本表利用PostgreSQL JSONB类型实现灵活的配置存储，结构如表\ref{tab:template_version}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{template\_version 模板版本表结构}
+    \label{tab:template_version}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{字段名} & \textbf{数据类型} & \textbf{约束} & \textbf{说明} \\
+        \hline
+        id & BIGSERIAL & PK & 自增主键 \\
+        \hline
+        template\_id & BIGINT & NOT NULL, FK & 所属模板 \\
+        \hline
+        version\_number & VARCHAR(20) & NOT NULL & 版本号（如1.0、2.0） \\
+        \hline
+        is\_current & BOOLEAN & DEFAULT TRUE & 是否为当前版本 \\
+        \hline
+        cover\_fields & JSONB & NOT NULL & 封面字段配置（JSON数组） \\
+        \hline
+        chapter\_structure & JSONB & NOT NULL & 章节结构定义（JSON数组） \\
+        \hline
+        format\_config & JSONB & NOT NULL & 排版格式参数（JSON对象） \\
+        \hline
+        created\_at & TIMESTAMP & DEFAULT NOW & 创建时间 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+其中\verb|cover_fields|示例：\verb|["title", "author", "studentId", "college", "major", "advisor", "date"]|；\verb|chapter_structure|示例指定章节层级和默认标题；\verb|format_config|包含字体、字号、行距、页边距等排版参数。
+
+\subsection{索引设计}
+
+为保障查询性能，系统在以下字段上建立了索引，如表\ref{tab:indexes}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{数据库索引设计}
+    \label{tab:indexes}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{索引名} & \textbf{表} & \textbf{字段} & \textbf{用途} \\
+        \hline
+        idx\_user\_role & sys\_user & role & 按角色筛选用户 \\
+        \hline
+        idx\_template\_college & template & college\_id & 按学院查询模板 \\
+        \hline
+        idx\_template\_type & template & type & 按类型筛选模板 \\
+        \hline
+        idx\_thesis\_student & thesis & student\_id & 查询学生论文列表 \\
+        \hline
+        idx\_thesis\_status & thesis & status & 按状态筛选论文 \\
+        \hline
+        idx\_section\_thesis & thesis\_section & thesis\_id & 查询论文全部章节 \\
+        \hline
+        idx\_annotation\_thesis & annotation & thesis\_id & 查询论文全部批注 \\
+        \hline
+        idx\_review\_thesis & review\_record & thesis\_id & 查询论文批阅记录 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+索引策略遵循以下原则：高频查询条件字段建索引（如role、status），外键关联字段建索引（如student\_id、thesis\_id、college\_id），避免在频繁更新的字段（如content）上建立索引。当前索引方案可覆盖系统的全部核心查询场景。
+
+\section{开发环境与工程结构}
+
+\subsection{开发环境配置}
+
+\begin{table}[htbp]
+    \centering
+    \caption{开发环境要求}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{工具/环境} & \textbf{版本要求} & \textbf{用途} \\
+        \hline
+        JDK & 21 LTS & Java编译和运行 \\
+        \hline
+        Maven & 3.9+（已内置mvnw） & 项目构建与依赖管理 \\
+        \hline
+        PostgreSQL & 16+ & 关系型数据库 \\
+        \hline
+        Redis & 7+ & 缓存与Token存储 \\
+        \hline
+        Node.js & 18+ & 前端构建和开发服务器 \\
+        \hline
+        TeX Live & 2024+ & LaTeX文档编译（PDF导出） \\
+        \hline
+        Git & 2.40+ & 版本控制 \\
+        \hline
+        IDE & IntelliJ IDEA / VS Code & 代码开发 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{后端工程结构}
+
+后端工程遵循Maven标准目录结构，采用分包分层组织代码：
+
+\begin{lstlisting}[language=Java,caption={后端工程目录结构}]
+thesis-generator/
++-- pom.xml                          # Maven配置（依赖/插件）
++-- mvnw / mvnw.cmd                  # Maven Wrapper（免安装）
++-- src/main/java/com/example/thesisgenerator/
+|   +-- ThesisGeneratorApplication.java  # Spring Boot启动类
+|   +-- common/                       # 通用组件
+|   |   +-- Result.java               # 统一API返回体
+|   |   +-- BusinessException.java    # 业务异常类
+|   |   +-- GlobalExceptionHandler.java # 全局异常处理
+|   +-- config/                       # 配置类
+|   |   +-- CorsConfig.java           # CORS跨域配置
+|   |   +-- RedisConfig.java          # Redis序列化配置
+|   |   +-- JwtUtil.java              # JWT工具类
+|   |   +-- JwtFilter.java            # JWT认证过滤器
+|   |   +-- RoleRequired.java         # 角色权限注解
+|   |   +-- RoleInterceptor.java      # 角色校验拦截器
+|   |   +-- WebConfig.java            # MVC拦截器注册
+|   |   +-- SwaggerConfig.java        # API文档配置
+|   +-- entity/                       # JPA实体类
+|   +-- repository/                   # 数据访问层
+|   +-- dto/                          # 数据传输对象
+|   +-- service/                      # 业务逻辑层
+|   +-- controller/                   # RESTful控制器
++-- src/main/resources/
+|   +-- application.properties        # 应用配置
+|   +-- schema.sql                    # 数据库初始化脚本
++-- src/test/                         # 单元测试
+\end{lstlisting}
+
+该结构的优势为：代码按职责分层（controller/service/repository），再按业务模块分包，层次清晰、职责分明，新成员可快速定位代码位置。
+% 过渡：整体架构 → 模板论文模块
+% ============================================================
+% 2_B_template_thesis.tex --- 模板模块 + 论文模块 概要设计
+% 编写人：B  日期：2026-07-15
+% 职责：模板概要 / 论文概要 / 接口设计 / 数据结构
+% ============================================================
+
+\section{模板管理模块概要设计}
+
+\subsection{模块定位}
+
+模板管理模块是论文自动生成系统的排版基础层，位于系统三层架构中的业务逻辑层。该模块负责定义和管理论文的全部排版规范参数，包括封面样式、章节结构骨架、字体字号行距、页边距页眉页脚等。上层模块——论文撰写编辑模块（D负责）和文档导出生成模块（C负责）——均依赖模板模块提供的 JSON 配置数据进行内容渲染和格式化输出。
+
+\subsection{模块边界与依赖关系}
+
+模板管理模块的边界清晰，仅与以下模块存在依赖交互：
+
+\begin{itemize}
+    \item \textbf{依赖认证权限模块（A负责）}：模板管理的所有 API 接口均需通过 JWT Token 鉴权，仅系统管理员角色可访问。
+    \item \textbf{被论文撰写模块（D负责）调用}：学生创建论文时查询可用模板列表、选择模板版本；编辑器加载时获取模板的 chapterStructure 构建章节树。
+    \item \textbf{被文档导出模块（C负责）调用}：导出 DOCX/PDF 时读取模板的 coverFields 渲染封面、formatConfig 设置文档样式。
+\end{itemize}
+
+\subsection{模块内部结构}
+
+模板管理模块内部划分为三个子模块：
+
+\begin{enumerate}
+    \item \textbf{学院管理子模块}：提供学院信息的 CRUD 接口，为模板按学院维度分类提供基础数据支撑。
+    \item \textbf{模板管理子模块}：管理模板元数据（名称、类型、关联学院），每个模板维护一个独立的版本链。
+    \item \textbf{版本管理子模块}：管理每个模板的版本记录，存储完整的排版配置数据（三个 JSON 字段：coverFields、chapterStructure、formatConfig）。
+\end{enumerate}
+
+\subsection{核心实体E-R关系}
+
+\begin{itemize}
+    \item \textbf{College \textrightarrow Template}：一对多关系。一个学院可有多个专属模板，同时可存在通用模板（college\_id 为 NULL）。
+    \item \textbf{Template \textrightarrow TemplateVersion}：一对多关系。一个模板可有多个历史版本，其中有且仅有一个版本 is\_current 为 true。
+    \item \textbf{TemplateVersion \textrightarrow Thesis}：一对多关系。学生创建论文时选择一个模板版本作为快照，论文生成时使用该快照的配置，不受后续模板版本变更影响。
+\end{itemize}
+
+\section{学院模块接口设计}
+
+\begin{table}[htbp]
+\centering
+\caption{学院管理 RESTful API}
+\begin{tabular}{lllp{5.5cm}}
+\toprule
+\textbf{方法} & \textbf{URL} & \textbf{权限} & \textbf{说明} \\
+\midrule
+GET    & /api/colleges          & Admin & 获取全部学院列表（按 name 升序），返回 id、name、code、创建时间 \\
+POST   & /api/colleges          & Admin & 新增学院。请求体：\{ "name": "...", "code": "..." \}，code 唯一性校验 \\
+PUT    & /api/colleges/\{id\}    & Admin & 编辑学院信息（仅 name 可修改，code 创建后不可改）\\
+DELETE & /api/colleges/\{id\}    & Admin & 删除学院。删除前检查关联数据，有关联则返回错误 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{模板模块接口设计}
+
+\begin{table}[htbp]
+\centering
+\caption{模板管理 RESTful API}
+\begin{tabular}{lllp{5.5cm}}
+\toprule
+\textbf{方法} & \textbf{URL} & \textbf{权限} & \textbf{说明} \\
+\midrule
+GET    & /api/templates                     & Admin & 获取模板列表。支持查询参数 type、collegeId 筛选 \\
+POST   & /api/templates                     & Admin & 创建模板。请求体：\{ "name": "...", "type": "GRADUATION", "collegeId": 1 \}。同时创建 V1.0 版本 \\
+PUT    & /api/templates/\{id\}               & Admin & 编辑模板元数据（name、type、collegeId、enabled）。不触发版本变更 \\
+DELETE & /api/templates/\{id\}               & Admin & 删除模板。检查 thesis 表引用，有关联进行中论文则阻止删除 \\
+GET    & /api/templates/\{id\}/versions       & Admin & 获取指定模板的全部版本列表，标注当前生效版本 \\
+POST   & /api/templates/\{id\}/versions       & Admin & 创建新版本。系统自动递增版本号，复制当前版本配置为初始值 \\
+PUT    & /api/templates/\{id\}/versions/\{vid\}/activate & Admin & 激活指定版本（回滚）\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{模板版本 JSON 配置数据结构}
+
+TemplateVersion 实体通过三个 JSON 格式的 TEXT 字段存储模板的完整配置参数。
+
+\paragraph{coverFields —— 封面元素配置（JSON Array）}
+
+封面由多个元素构成，每个元素的 schema 定义如下：
+
+\begin{lstlisting}[language=Java]
+[
+  {
+    "field": "title",       // 元素标识
+    "label": "论文题目",      // 封面显示文本
+    "x": 50, "y": 30,       // 位置（页面百分比坐标）
+    "fontSize": 22,
+    "bold": true
+  },
+  {
+    "field": "date",
+    "label": "提交日期",
+    "x": 50, "y": 90,
+    "fontSize": 14,
+    "format": "yyyy年MM月dd日"
+  }
+]
+\end{lstlisting}
+
+\paragraph{chapterStructure —— 章节结构配置（JSON Array）}
+
+定义论文的章节树骨架，递归嵌套结构：
+
+\begin{lstlisting}[language=Java]
+[
+  {
+    "key": "abstract",     // 章节唯一标识（对应 ThesisSection.sectionKey）
+    "title": "摘要",        // 章节标题
+    "type": "chapter",      // chapter / section / auto（自动生成）
+    "children": [           // 子章节数组（递归同结构）
+      { "key": "abstract_cn", "title": "中文摘要", "type": "section" },
+      { "key": "abstract_en", "title": "英文摘要", "type": "section" }
+    ]
+  },
+  { "key": "toc", "title": "目录", "type": "auto" },
+  { "key": "ch1", "title": "引言", "type": "chapter", "children": [...] }
+]
+\end{lstlisting}
+
+\paragraph{formatConfig —— 排版格式配置（JSON Object）}
+
+\begin{lstlisting}[language=Java]
+{
+  "page": {
+    "size": "A4",
+    "marginTop": 2.5, "marginBottom": 2.5,
+    "marginLeft": 3.0, "marginRight": 2.5
+  },
+  "font": {
+    "body": "宋体", "bodySize": 12,
+    "heading": "黑体", "headingSize": 16
+  },
+  "spacing": { "lineHeight": 1.5, "paragraphGap": 0.5 },
+  "headerFooter": {
+    "oddHeader": "章标题",
+    "evenHeader": "论文题目",
+    "pageNumber": "第{page}页"
+  }
+}
+\end{lstlisting}
+
+\section{论文模块概要设计}
+
+\subsection{模块定位}
+
+论文模块是系统的业务核心层，管理论文从创建到生成的全生命周期。该模块与章节存取模块紧密协作：论文模块管理论文的元数据和生命周期，章节存取模块管理论文的内容数据。
+
+\subsection{论文状态机设计}
+
+\begin{table}[htbp]
+\centering
+\caption{论文状态转换规则}
+\begin{tabular}{lll}
+\toprule
+\textbf{当前状态} & \textbf{可转换目标状态} & \textbf{触发条件} \\
+\midrule
+DRAFT      & SUBMITTED   & 学生点击提交按钮，论文锁定 \\
+DRAFT      & GENERATING  & 学生点击生成文档按钮 \\
+SUBMITTED  & REVIEWED    & 教师提交批阅意见 \\
+SUBMITTED  & RETURNED    & 教师点击退回修改 \\
+RETURNED   & DRAFT       & 学生进入编辑（自动切换，解锁论文）\\
+GENERATING & COMPLETED   & 文档导出任务执行完成 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{论文锁定机制}
+
+\begin{itemize}
+    \item 论文提交时 is\_locked 自动置为 true，前端编辑器进入只读模式。
+    \item 教师退回时 is\_locked 自动置为 false，恢复编辑权限。
+    \item 文档生成中 is\_locked 为 true，前端禁用所有编辑操作。
+    \item 仅在 DRAFT 状态且 is\_locked 为 false 时，才允许调用章节内容更新接口。
+\end{itemize}
+
+\section{论文模块接口设计}
+
+\begin{table}[htbp]
+\centering
+\caption{论文管理 RESTful API}
+\begin{tabular}{lllp{5cm}}
+\toprule
+\textbf{方法} & \textbf{URL} & \textbf{权限} & \textbf{说明} \\
+\midrule
+GET    & /api/theses                & Student & 获取当前学生全部论文列表，按 updated\_at 降序 \\
+POST   & /api/theses                & Student & 创建新论文。请求体：\{ "title": "...", "templateVersionId": 3, "collegeId": 1 \}。自动创建章节记录 \\
+GET    & /api/theses/\{id\}          & Student & 获取论文详情（含章节树）\\
+PUT    & /api/theses/\{id\}          & Student & 修改论文标题（仅 DRAFT 状态）\\
+DELETE & /api/theses/\{id\}          & Student & 删除论文（仅 DRAFT 状态），级联删除章节 \\
+PUT    & /api/theses/\{id\}/submit   & Student & 提交论文：校验章节非空，改状态为 SUBMITTED，锁定 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{章节存取模块概要设计}
+
+\subsection{章节树存储模型}
+
+ThesisSection 表采用\textbf{邻接表模型}（Adjacency List）存储树形数据：
+
+\begin{itemize}
+    \item \textbf{根节点}：parent\_id 为 NULL，section\_type 为 "chapter"。
+    \item \textbf{子节点}：parent\_id 指向父章节 id，section\_type 为 "section"，可继续嵌套。
+    \item \textbf{排序}：同层级节点按 sort\_order 升序排列。
+    \item \textbf{双内容字段}：content 存储正式内容，draftContent 存储自动保存草稿。编辑器加载时优先展示 draftContent 以恢复未保存内容。
+\end{itemize}
+
+\section{章节存取接口设计}
+
+\begin{table}[htbp]
+\centering
+\caption{章节管理 RESTful API}
+\begin{tabular}{lllp{5cm}}
+\toprule
+\textbf{方法} & \textbf{URL} & \textbf{权限} & \textbf{说明} \\
+\midrule
+GET    & /api/theses/\{id\}/sections    & Student & 获取论文全部章节树（递归嵌套 JSON，按 sort\_order 排序）\\
+PUT    & /api/sections/\{id\}            & Student & 更新章节内容。请求体：\{ "content": "..." \} 或 \{ "draftContent": "..." \} \\
+PUT    & /api/sections/\{id\}/submit     & Student & 提交章节：draftContent 合并到 content，清空 draftContent \\
+POST   & /api/sections/\{id\}/auto-save  & Student & 自动保存草稿（仅更新 draftContent），每30s前端触发 \\
+PUT    & /api/sections/\{id\}/reorder    & Student & 调整章节排序 \\
+POST   & /api/theses/\{id\}/sections    & Student & 新增自定义章节 \\
+DELETE & /api/sections/\{id\}            & Student & 删除章节（级联删除子章节）\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{数据库表结构汇总}
+
+\begin{table}[htbp]
+\centering
+\caption{B 负责模块涉及的数据库表}
+\begin{tabular}{lllp{7cm}}
+\toprule
+\textbf{表名} & \textbf{对应实体} & \textbf{主键} & \textbf{核心字段} \\
+\midrule
+sys\_college & College & id BIGINT 自增 & name, code (UNIQUE), created\_at, updated\_at \\
+template & Template & id BIGINT 自增 & name, type, college\_id FK, enabled, created\_at, updated\_at \\
+template\_version & TemplateVersion & id BIGINT 自增 & template\_id FK, version\_number, is\_current, cover\_fields TEXT(JSON), chapter\_structure TEXT(JSON), format\_config TEXT(JSON), created\_at \\
+thesis & Thesis & id BIGINT 自增 & student\_id FK, template\_version\_id FK, title, status, is\_locked, college\_id FK, created\_at, updated\_at \\
+thesis\_section & ThesisSection & id BIGINT 自增 & thesis\_id FK, title, section\_key, content TEXT, draft\_content TEXT, section\_type, parent\_id 自引用FK, sort\_order, created\_at, updated\_at \\
+\bottomrule
+\end{tabular}
+\end{table}
+% 过渡：模板论文 → 参考文献/图片/导出模块
+% ============================================
+% 第3章：参考文献/图片/文档导出模块概要设计
+% 负责人：C
+% ============================================
+
+\section{参考文献管理模块概要设计}
+
+\subsection{模块职责}
+
+参考文献管理模块负责学生论文写作过程中参考文献条目的全生命周期管理，包括文献信息的CRUD操作、分类检索和标准格式化输出。该模块独立于论文实体运行，维护一个通用的参考文献库，导出时按序注入文档。
+
+\subsection{模块接口}
+
+\begin{table}[htbp]
+\centering
+\caption{参考文献管理模块API接口}
+\label{tab:ref_api}
+\begin{tabular}{lllp{5cm}}
+\toprule
+\textbf{方法} & \textbf{路径} & \textbf{说明} \\
+\midrule
+GET    & /api/references       & 获取所有文献（按年份降序） \\
+GET    & /api/references/\{id\} & 获取单条文献 \\
+POST   & /api/references       & 新增文献 \\
+PUT    & /api/references/\{id\} & 更新文献 \\
+DELETE & /api/references/\{id\} & 删除文献 \\
+GET    & /api/references/search/author & 按作者搜索 \\
+GET    & /api/references/search/title  & 按标题搜索 \\
+GET    & /api/references/\{id\}/format & 单条GB/T 7714格式化 \\
+GET    & /api/references/format/all   & 全部GB/T 7714格式化列表 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{与外部模块的交互}
+
+\begin{itemize}
+    \item \textbf{与论文管理模块}：论文的参考文献数据通过thesis\_id外键关联，导出模块读取格式化后的参考文献列表写入文档；
+    \item \textbf{与前端交互}：前端通过REST API完成文献的增删改查操作，格式化结果在前端预览列表展示；
+    \item \textbf{与导出模块}：导出模块调用格式化服务获取GB/T 7714格式化的文献字符串列表，按序写入DOCX文档的"参考文献"章节。
+\end{itemize}
+
+\subsection{GB/T 7714格式化设计}
+
+系统支持五种文献类型的标准化格式化输出：
+
+\begin{itemize}
+    \item \textbf{[J] 期刊文章}：作者. 标题[J]. 刊物名称, 年份, 卷(期): 页码.
+    \item \textbf{[M] 专著/书籍}：作者. 标题[M]. 出版地: 出版社, 年份.
+    \item \textbf{[C] 会议论文}：作者. 标题[C]// 会议名称. 年份: 页码.
+    \item \textbf{[D] 学位论文}：作者. 标题[D]. 授予单位, 年份.
+    \item \textbf{[EB] 网络资源}：作者. 标题[EB/OL]. 链接, 引用日期.
+\end{itemize}
+
+格式化器采用策略模式实现，根据文献类型自动路由到对应的格式化方法，便于后续扩展新的文献类型。
+
+\section{图片上传与管理模块概要设计}
+
+\subsection{模块职责}
+
+图片管理模块负责学生论文插图的文件上传、校验、存储和访问。文件存储于服务器本地文件系统，图片元信息存储于数据库。
+
+\subsection{模块接口}
+
+\begin{table}[htbp]
+\centering
+\caption{图片管理模块API接口}
+\label{tab:img_api}
+\begin{tabular}{lllp{5cm}}
+\toprule
+\textbf{方法} & \textbf{路径} & \textbf{说明} \\
+\midrule
+POST   & /api/images/upload       & 上传图片（multipart/form-data） \\
+GET    & /api/images/\{id\}        & 获取图片元信息 \\
+GET    & /api/images/\{id\}/file   & 获取图片文件（浏览器直接查看） \\
+DELETE & /api/images/\{id\}        & 删除图片 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{技术方案}
+
+\begin{itemize}
+    \item \textbf{上传协议}：HTTP multipart/form-data，通过Spring MVC的MultipartFile接收；
+    \item \textbf{文件存储}：服务器本地文件系统，存储路径为 \verb|{uploadDir}/{uuid}.{ext}|；
+    \item \textbf{文件名策略}：采用UUID v4生成存储文件名，避免中文文件名编码问题和重名冲突；
+    \item \textbf{格式校验}：后端校验Content-Type头，仅允许image/jpeg、image/png、image/gif、image/webp；
+    \item \textbf{大小限制}：通过spring.servlet.multipart.max-file-size=10MB全局限制；
+    \item \textbf{访问方式}：通过/api/images/\{id\}/file静态资源映射返回文件流，Content-Disposition设置为inline以支持浏览器直接展示。
+\end{itemize}
+
+\subsection{与外部模块的交互}
+
+\begin{itemize}
+    \item \textbf{与前端交互}：前端在上传成功后获取图片URL，将其嵌入编辑器HTML内容中；
+    \item \textbf{与导出模块}：导出模块解析论文章节HTML，提取<img>标签中的图片URL，读取本地图片文件嵌入DOCX/PDF文档。
+\end{itemize}
+
+\section{文档导出模块概要设计}
+
+\subsection{模块职责}
+
+文档导出模块是本系统的核心模块，负责将学生在Web编辑器中撰写的论文内容，按模板格式配置生成标准的Word（DOCX）和PDF文档。
+
+\subsection{总体流程}
+
+\begin{enumerate}
+    \item 学生点击"导出"按钮，前端发送导出请求（指定论文ID和导出格式）；
+    \item 后端接收请求，校验论文状态和内容完整性；
+    \item 后端从数据库读取论文数据（各章节内容、参考文献列表、模板格式配置）；
+    \item 获取嵌入的图片文件资源（从本地文件系统读取）；
+    \item 使用Apache POI XWPF按模板格式配置创建DOCX文档；
+    \item 若导出格式为PDF，则调用LibreOffice无头模式将DOCX转换为PDF；
+    \item 将生成的文档文件返回给前端（直接下载或返回文件链接）。
+\end{enumerate}
+
+\subsection{技术方案对比}
+
+\begin{table}[htbp]
+\centering
+\caption{文档生成技术方案对比}
+\label{tab:export_compare}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{方案} & \textbf{DOCX生成} & \textbf{PDF生成} & \textbf{中文支持} \\
+\hline
+Apache POI & 原生创建、样式精细 & 不支持 & 需指定中文字体 \\
+\hline
+LibreOffice Headless & — & 从DOCX转换，还原度高 & 系统字体依赖 \\
+\hline
+\end{tabular}
+\end{table}
+
+技术选型结论：
+\begin{itemize}
+    \item DOCX生成采用Apache POI（poi-ooxml 5.x），直接操作XWPFDocument对象，逐段落、表格、图片构建文档；
+    \item PDF生成采用"DOCX → LibreOffice Headless → PDF"的两步方案，保证DOCX和PDF输出的一致性。
+\end{itemize}
+
+\subsection{数据流设计}
+
+\begin{verbatim}
+用户点击导出
+    |
+    v
+导出请求 -> 查询论文数据（Thesis + ThesisSections）
+    |              |
+    |       查询参考文献（ThesisReference）
+    |              |
+    |       查询图片文件（ThesisImage → 本地文件）
+    |              |
+    v              v
+Apache POI XWPF 构建 .docx
+    |
+    +---> 直接返回 .docx（格式：DOCX）
+    |
+    +---> LibreOffice --headless --convert-to pdf
+              |
+              v
+          返回 .pdf（格式：PDF）
+\end{verbatim}
+
+\subsection{与外部模块的交互}
+
+\begin{itemize}
+    \item \textbf{与论文管理模块}：读取论文的章节内容（HTML格式）和模板格式参数（JSON）；
+    \item \textbf{与参考文献模块}：调用格式化服务，获取GB/T 7714格式化的参考文献字符串列表；
+    \item \textbf{与图片管理模块}：通过图片存储路径读取本地图片文件，嵌入文档对应位置；
+    \item \textbf{与前端交互}：通过异步任务接口反馈导出进度，最终返回下载链接。
+\end{itemize}
+% 过渡：导出模块 → 前端架构
+% ============================================================
+% 4_D_frontend_arch.tex — 前端路由 + 组件架构
+% 编写人：D  日期：2026-07-15
+% ============================================================
+
+\section{前端技术选型与架构概述}
+
+\subsection{技术栈}
+
+前端采用Vue 3生态体系构建单页面应用（SPA），具体选型如下：
+
+\begin{table}[htbp]
+    \centering
+    \caption{前端技术栈选型表}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{类别} & \textbf{技术} & \textbf{版本} \\
+        \hline
+        框架 & Vue 3 (Composition API) & 3.4+ \\
+        \hline
+        构建工具 & Vite & 5.0+ \\
+        \hline
+        语言 & TypeScript & 5.3+ \\
+        \hline
+        UI组件库 & Element Plus & 2.5+ \\
+        \hline
+        路由 & Vue Router & 4.3+ \\
+        \hline
+        HTTP客户端 & Axios & 1.6+ \\
+        \hline
+        状态管理 & Pinia & 2.1+ \\
+        \hline
+        富文本编辑器 & Tiptap (基于ProseMirror) & 2.0+ \\
+        \hline
+        代码规范 & ESLint + Prettier & 8.0+ / 3.0+ \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{选型理由}
+
+\begin{itemize}
+    \item \textbf{Vue 3 + Composition API}：组合式API提供更好的逻辑复用能力和TypeScript支持；\texttt{<script setup>}语法糖减少样板代码，提高开发效率。
+    \item \textbf{Vite}：基于ESM的开发服务器，冷启动速度远快于Webpack；HMR毫秒级响应，提升开发体验；生产构建基于Rollup，产物体积小。
+    \item \textbf{Element Plus}：Vue 3生态最成熟的桌面端UI库，提供表格、表单、对话框、树形控件等全套组件，适合论文编辑器的复杂交互场景。
+    \item \textbf{Tiptap}：基于ProseMirror的现代化富文本编辑器框架，支持自定义扩展（参考文献引用、图片上传、表格编辑），完全可控的Schema设计，渲染与数据分离，便于导出DOCX/PDF。
+    \item \textbf{Pinia}：Vue官方推荐的状态管理库，TypeScript原生支持，模块化Store设计，比Vuex更简洁。
+\end{itemize}
+
+% ============================================================
+\section{前端工程目录结构}
+
+\begin{lstlisting}[language=JavaScript]
+thesis-generator-web/
+├── public/                     # 静态资源
+│   └── favicon.ico
+├── src/
+│   ├── api/                    # API接口封装层
+│   │   ├── request.ts          # Axios实例 + 请求/响应拦截器
+│   │   ├── auth.ts             # 认证相关API
+│   │   ├── paper.ts            # 论文CRUD API
+│   │   ├── section.ts          # 章节API
+│   │   ├── template.ts         # 模板API
+│   │   ├── reference.ts        # 参考文献API
+│   │   ├── export.ts           # 导出API
+│   │   └── college.ts          # 学院API
+│   ├── assets/                 # 样式/图片/字体
+│   │   ├── styles/
+│   │   │   ├── variables.scss  # SCSS变量（主题色、间距等）
+│   │   │   ├── global.scss     # 全局样式
+│   │   │   └── editor.scss     # 编辑器专属样式
+│   │   └── images/
+│   ├── components/             # 全局共享组件
+│   │   ├── common/             # 通用组件（Header、Loading等）
+│   │   ├── editor/             # 编辑器组件
+│   │   │   ├── EditorToolbar.vue    # 编辑器工具栏
+│   │   │   ├── SectionTree.vue      # 章节树组件
+│   │   │   ├── ReferencePanel.vue   # 参考文献管理面板
+│   │   │   ├── ImageUploader.vue    # 图片上传组件
+│   │   │   └── TableEditor.vue      # 表格编辑组件
+│   │   └── preview/
+│   │       └── PaperPreview.vue
+│   ├── composables/            # 组合式函数（逻辑复用）
+│   │   ├── useAuth.ts          # 认证逻辑
+│   │   ├── useAutoSave.ts      # 自动保存逻辑
+│   │   ├── useEditor.ts        # 编辑器核心逻辑
+│   │   └── useExport.ts        # 导出逻辑
+│   ├── layouts/                # 布局组件
+│   │   ├── DefaultLayout.vue   # 默认布局（Header+内容+Footer）
+│   │   ├── EditorLayout.vue    # 编辑器三栏布局
+│   │   └── AuthLayout.vue      # 认证页居中布局
+│   ├── router/                 # 路由配置
+│   │   └── index.ts
+│   ├── stores/                 # Pinia状态管理
+│   │   ├── auth.ts             # 用户认证状态
+│   │   ├── paper.ts            # 当前论文状态
+│   │   └── editor.ts           # 编辑器状态（当前章节、脏数据标记等）
+│   ├── types/                  # TypeScript类型定义
+│   │   ├── paper.ts
+│   │   ├── section.ts
+│   │   ├── template.ts
+│   │   └── api.ts
+│   ├── utils/                  # 工具函数
+│   │   ├── token.ts            # Token存取
+│   │   └── validator.ts        # 表单校验规则
+│   ├── views/                  # 页面视图组件
+│   │   ├── auth/
+│   │   │   ├── Login.vue
+│   │   │   └── Register.vue
+│   │   ├── paper/
+│   │   │   ├── PaperList.vue       # 论文列表首页
+│   │   │   ├── PaperCreate.vue     # 论文创建向导
+│   │   │   └── PaperEditor.vue     # 论文编辑器主页面
+│   │   ├── preview/
+│   │   │   └── PreviewPage.vue     # 预览页面
+│   │   └── user/
+│   │       ├── Profile.vue         # 个人中心
+│   │       └── ExportHistory.vue   # 导出历史
+│   ├── App.vue
+│   └── main.ts                # 入口文件
+├── vite.config.ts
+├── tsconfig.json
+├── package.json
+└── .env.development / .env.production
+\end{lstlisting}
+
+% ============================================================
+\section{前端路由设计}
+
+\subsection{路由表定义}
+
+系统采用Vue Router 4的嵌套路由方案，结合路由元信息（meta）实现鉴权控制和布局切换。
+
+\begin{table}[htbp]
+    \centering
+    \caption{前端路由表}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{路径} & \textbf{页面组件} & \textbf{布局} & \textbf{鉴权} \\
+        \hline
+        \texttt{/login} & Login & AuthLayout & 否 \\
+        \hline
+        \texttt{/register} & Register & AuthLayout & 否 \\
+        \hline
+        \texttt{/papers} & PaperList & DefaultLayout & 是 \\
+        \hline
+        \texttt{/papers/create} & PaperCreate & DefaultLayout & 是 \\
+        \hline
+        \texttt{/editor/:paperId} & PaperEditor & EditorLayout & 是 \\
+        \hline
+        \texttt{/preview/:paperId} & PreviewPage & DefaultLayout & 是 \\
+        \hline
+        \texttt{/profile} & Profile & DefaultLayout & 是 \\
+        \hline
+        \texttt{/export-history} & ExportHistory & DefaultLayout & 是 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{路由鉴权守卫}
+
+\begin{lstlisting}[language=JavaScript]
+// router/index.ts
+router.beforeEach((to, from, next) => {
+    const token = localStorage.getItem('token')
+    if (to.meta.requiresAuth && !token) {
+        next({ path: '/login', query: { redirect: to.fullPath } })
+    } else if (token && (to.path === '/login' || to.path === '/register')) {
+        next({ path: '/papers' })
+    } else {
+        next()
+    }
+})
+\end{lstlisting}
+
+所有页面组件采用动态 import() 实现路由级代码分割，减少首屏加载体积。
+
+% ============================================================
+\section{前端组件架构设计}
+
+\subsection{组件分层架构}
+
+前端组件按职责划分为四层：
+
+\begin{enumerate}
+    \item \textbf{页面层（Views）}：路由级页面组件，负责页面整体布局编排、调用API获取数据、协调子组件交互。不包含具体的UI渲染逻辑。
+    \item \textbf{业务组件层（Business Components）}：承载特定业务逻辑的复合组件，如章节树（SectionTree）、参考文献面板（ReferencePanel）、导出对话框（ExportDialog）。这些组件内部管理自身状态，通过Props接收数据、Emits向外传递事件。
+    \item \textbf{通用组件层（Common Components）}：无业务耦合的纯UI组件，如全局Header、Loading遮罩、确认对话框。可在多个页面复用。
+    \item \textbf{基础组件层（UI Library）}：直接使用Element Plus提供的按钮、输入框、表格、对话框、树形控件等原子级组件。
+\end{enumerate}
+
+\subsection{核心组件通信模式}
+
+\begin{itemize}
+    \item \textbf{父子通信}：父组件通过Props传递数据给子组件，子组件通过 defineEmits 向父组件发送事件通知。适用于章节树→编辑器的章节切换、工具栏→编辑器的格式操作。
+    \item \textbf{全局状态（Pinia Store）}：跨页面共享的数据使用Pinia管理。主要包括：
+    \begin{itemize}
+        \item authStore：当前登录用户信息、Token、登录/登出操作；
+        \item paperStore：当前论文基本信息、章节列表、模板信息；
+        \item editorStore：当前编辑章节ID、脏数据标记、自动保存状态、编辑器实例引用。
+    \end{itemize}
+    \item \textbf{依赖注入（provide/inject）}：编辑器内部深层嵌套的组件通过provide/inject获取编辑器实例和上下文配置，避免Prop逐层传递。
+\end{itemize}
+
+\subsection{编辑器组件架构}
+
+编辑器是学生端最复杂的业务组件，采用Tiptap + 自定义扩展的架构：
+
+\begin{enumerate}
+    \item \textbf{Tiptap Editor实例}：通过 useEditor() 组合式函数创建，配置插件扩展集（Bold、Italic、Heading、Image、Table、ReferenceCitation等）。
+    \item \textbf{自定义Extension}：开发 ReferenceCitation 扩展节点，在编辑器文档中以inline节点存储引用ID，渲染为 [n] 标记，导出时转换为格式化引用。
+    \item \textbf{工具栏（EditorToolbar）}：通过Tiptap的 editor.chain().focus() API调用编辑器命令，每个按钮绑定对应命令，高亮当前激活状态。
+    \item \textbf{章节树（SectionTree）}：使用Element Plus的Tree组件，支持拖拽排序（node-drop事件），右键上下文菜单（添加/删除/重命名章节）。
+    \item \textbf{自动保存（useAutoSave）}：监听编辑器onUpdate事件，使用防抖（debounce）机制，30秒无新修改后自动触发保存API；页面关闭前通过beforeunload事件检测脏数据。
+    \item \textbf{参考文献面板（ReferencePanel）}：侧边栏面板，使用Element Plus Table展示文献列表，Dialog承载添加/编辑表单。与编辑器通过Pinia Store通信，正文引用标记与文献列表保持同步。
+\end{enumerate}
+
+\subsection{组件状态生命周期}
+
+以论文编辑器页面为例，组件状态流转如下：
+
+\begin{enumerate}
+    \item \textbf{页面挂载阶段}：
+    \begin{itemize}
+        \item 从路由参数获取 paperId；
+        \item 调用 \texttt{GET /api/v1/papers/:paperId} 获取论文基础信息，存入 paperStore；
+        \item 调用 \texttt{GET /api/v1/papers/:paperId/sections} 获取章节树，存入 editorStore；
+        \item 初始化Tiptap编辑器实例，加载第一个章节内容；
+        \item 启动自动保存监听。
+    \end{itemize}
+    \item \textbf{编辑交互阶段}：
+    \begin{itemize}
+        \item 切换章节 → 保存当前章节 → 加载目标章节内容至编辑器；
+        \item 拖拽排序 → 更新本地章节顺序 → 发送 PUT 请求更新后端；
+        \item 添加章节 → 弹出命名对话框 → 确认后创建章节节点 → 刷新章节树；
+        \item 插入引用 → 打开参考文献面板 → 选择文献 → 光标处插入引用标记。
+    \end{itemize}
+    \item \textbf{页面卸载阶段}：
+    \begin{itemize}
+        \item 检查脏数据标记，若有未保存修改则弹窗提示；
+        \item 执行最终保存；
+        \item 销毁Tiptap编辑器实例，释放内存；
+        \item 清理Pinia Store中的临时状态。
+    \end{itemize}
+\end{enumerate}
+
+% ============================================================
+\section{Axios封装与API层设计}
+
+\subsection{请求/响应拦截器}
+
+\begin{lstlisting}[language=JavaScript]
+// api/request.ts
+import axios from 'axios'
+import { ElMessage } from 'element-plus'
+import router from '@/router'
+
+const request = axios.create({
+    baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
+    timeout: 15000,
+})
+
+request.interceptors.request.use((config) => {
+    const token = localStorage.getItem('token')
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+})
+
+request.interceptors.response.use(
+    (response) => response.data,
+    (error) => {
+        if (error.response?.status === 401) {
+            localStorage.removeItem('token')
+            router.push('/login')
+            ElMessage.error('登录已过期，请重新登录')
+        } else {
+            ElMessage.error(error.response?.data?.message || '请求失败')
+        }
+        return Promise.reject(error)
+    }
+)
+
+export default request
+\end{lstlisting}
+
+\subsection{学生端API接口清单}
+
+\begin{table}[htbp]
+    \centering
+    \caption{学生端调用API接口汇总}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{方法} & \textbf{路径} & \textbf{说明} \\
+        \hline
+        POST & \texttt{/api/v1/auth/register} & 学生注册 \\
+        POST & \texttt{/api/v1/auth/login} & 学生登录 \\
+        POST & \texttt{/api/v1/auth/logout} & 退出登录 \\
+        \hline
+        GET & \texttt{/api/v1/papers} & 获取论文列表 \\
+        POST & \texttt{/api/v1/papers} & 新建论文 \\
+        GET & \texttt{/api/v1/papers/:id} & 获取论文详情 \\
+        PUT & \texttt{/api/v1/papers/:id} & 更新论文信息 \\
+        DELETE & \texttt{/api/v1/papers/:id} & 删除论文 \\
+        \hline
+        GET & \texttt{/api/v1/papers/:id/sections} & 获取章节树 \\
+        POST & \texttt{/api/v1/papers/:id/sections} & 新增章节 \\
+        GET & \texttt{/api/v1/papers/:id/sections/:sid} & 获取章节内容 \\
+        PUT & \texttt{/api/v1/papers/:id/sections/:sid} & 保存章节内容 \\
+        PUT & \texttt{/api/v1/papers/:id/sections/order} & 更新章节排序 \\
+        DELETE & \texttt{/api/v1/papers/:id/sections/:sid} & 删除章节 \\
+        \hline
+        GET & \texttt{/api/v1/templates} & 获取模板列表 \\
+        GET & \texttt{/api/v1/templates/:id} & 获取模板详情 \\
+        \hline
+        GET & \texttt{/api/v1/references} & 获取参考文献列表 \\
+        POST & \texttt{/api/v1/references} & 新增参考文献 \\
+        PUT & \texttt{/api/v1/references/:id} & 编辑参考文献 \\
+        DELETE & \texttt{/api/v1/references/:id} & 删除参考文献 \\
+        \hline
+        POST & \texttt{/api/v1/papers/:id/export} & 提交导出任务 \\
+        GET & \texttt{/api/v1/export/:taskId/status} & 查询导出进度 \\
+        GET & \texttt{/api/v1/export/history} & 获取导出历史 \\
+        \hline
+        POST & \texttt{/api/v1/images/upload} & 上传图片 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+% ============================================================
+\section{学生端核心模块概要设计}
+
+\subsection{论文创建向导流程}
+
+\begin{enumerate}
+    \item 用户在论文列表页点击"新建论文"，前端弹出 PaperCreate 对话框或跳转独立页面；
+    \item 步骤一：输入论文标题，选择所属学院。学院列表通过 API 获取并在下拉框中展示；
+    \item 步骤二：根据所选学院ID获取匹配模板列表。前端以卡片形式展示模板名称、封面缩略图、适用说明；
+    \item 步骤三：用户确认创建，前端组装论文信息（标题、学院ID、模板ID）发送 POST 请求；
+    \item 后端返回新论文ID，前端跳转至编辑器页面 /editor/:paperId。
+\end{enumerate}
+
+\subsection{编辑器核心逻辑}
+
+\begin{enumerate}
+    \item 页面加载：获取论文数据 → 获取章节树 → 初始化编辑器 → 加载默认章节内容 → 启动自动保存；
+    \item 章节切换：保存当前章节（若有修改） → 发送 PUT 请求 → 获取新章节内容 GET → 重置编辑器内容；
+    \item 章节拖拽排序：监听 node-drop 事件 → 本地更新顺序 → 发送 PUT 请求提交新顺序；
+    \item 自动保存：编辑器 onUpdate 事件 → 防抖30秒 → 标记脏数据 → 发送 PUT 请求 → 更新最后保存时间显示；
+    \item 图片上传：用户粘贴或拖拽图片 → 前端压缩（可选） → POST 上传 → 返回URL → 插入编辑器。
+\end{enumerate}
+
+\subsection{论文预览}
+
+\begin{enumerate}
+    \item 用户点击"预览"按钮，前端调用 API 获取预览数据；
+    \item 后端根据论文模板样式，将章节内容渲染为HTML；
+    \item 前端在新标签页展示渲染后的HTML，页面布局模拟A4纸张效果；
+    \item 预览页支持翻页浏览、缩放查看功能。
+\end{enumerate}
+% 过渡：前端架构 → 前端交互与UI模块
+% ============================================================
+% 5_E_frontend_interact.tex — 前端交互与UI模块概要设计
+% 编写人：E  日期：2026-07-15
+% 职责：管理员端页面 / 教师端页面 / UI设计规范
+% ============================================================
+
+\section{管理员端页面概要设计}
+
+\subsection{页面布局}
+
+管理员端采用侧边导航+顶部栏+内容区域的经典后台管理布局。侧边导航收起时仅显示图标，展开时显示图标+文字标签。顶部栏展示系统Logo、当前管理员用户名、退出登录按钮。内容区域根据路由切换展示不同的功能页面。
+
+管理员端包含以下核心页面：
+\begin{itemize}
+    \item \textbf{仪表盘页（/admin/dashboard）}：系统数据概览看板，展示用户数、论文数、模板数等核心指标；
+    \item \textbf{学院管理页（/admin/colleges）}：学院信息的CRUD操作界面；
+    \item \textbf{用户管理页（/admin/users）}：用户账号的查询、筛选、禁用/启用操作界面；
+    \item \textbf{模板管理页（/admin/templates）}：模板列表展示、创建、编辑、启用/停用操作界面；
+    \item \textbf{模板版本编辑页（/admin/templates/:id/versions）}：JSON配置编辑器，管理模板的封面字段、章节结构和格式参数。
+\end{itemize}
+
+\subsection{仪表盘页设计}
+
+仪表盘页采用卡片网格布局，上方为四个统计指标卡片（总用户数、在编论文数、模板总数、今日导出数），下方为图表区域（论文状态分布饼图、每天导出数量趋势折线图）。所有图表数据通过独立API获取，支持按时间范围筛选。
+
+\subsection{学院管理页设计}
+
+学院管理页采用表格视图，上方为操作栏（新增学院按钮、搜索输入框），主体为el-table组件展示学院列表，字段包含学院名称、学院代码、关联模板数、关联用户数、创建时间。表格行末尾提供编辑和删除操作按钮。新增/编辑操作通过el-dialog弹窗实现。
+
+\subsection{模板管理页设计}
+
+模板管理页是管理员端配置最复杂的页面，采用左侧列表+右侧编辑的双栏布局：
+\begin{itemize}
+    \item 左侧模板列表以卡片形式展示模板名称、类型标签（毕业/课程/项目）、当前版本号、启用状态开关（el-switch），支持按类型和学院筛选；
+    \item 右侧编辑区域在未选中模板时展示"请选择模板"占位提示，选中模板后切换为编辑界面；
+    \item 编辑界面采用Tabs组件组织三个配置面板：封面字段配置（拖拽排序的字段列表）、章节结构配置（树形编辑器）、格式参数配置（表单）。
+\end{itemize}
+
+\subsection{模板版本编辑页设计}
+
+版本编辑页右侧使用JSON编辑器或可视化表单进行配置编辑。封面字段配置区支持拖拽添加/删除/排序封面元素，每个元素可配置字段标签、是否必填、默认值。章节结构采用el-tree组件，支持拖拽调整层级、右键菜单新增/删除节点。格式参数采用el-form配合el-color-picker（颜色选择）、el-slider（行距/边距调整）等丰富控件，参数调整后右侧实时预览展示渲染效果。
+
+\section{教师端页面概要设计}
+
+\subsection{页面布局}
+
+教师端同样采用侧边导航+顶部栏+内容区域布局。侧边导航包含批阅论文列表和批阅历史两个主要入口。教师端整体风格偏阅读和审阅，内容区域以白底卡片为主，减少视觉干扰。
+
+教师端包含以下核心页面：
+\begin{itemize}
+    \item \textbf{批阅任务列表页（/teacher/reviews）}：展示待批阅和已批阅的论文列表；
+    \item \textbf{论文批阅页（/teacher/reviews/:id）}：论文全文阅读+批注添加+评分的核心操作页面；
+    \item \textbf{批阅历史页（/teacher/history）}：展示教师历次批阅记录汇总。
+\end{itemize}
+
+\subsection{批阅任务列表页设计}
+
+批阅任务列表采用表格视图，展示字段包括论文标题、学生姓名、所属学院、提交时间、当前状态（待批阅/已批阅/已退回）。表格支持按学院筛选和按提交时间排序。状态列使用不同颜色的el-tag展示：待批阅为橙色、已批阅为绿色、已退回为灰色。新增提交的论文在列表顶部显示，并用闪烁的"新"标签提示教师。
+
+\subsection{论文批阅页设计}
+
+论文批阅页采用三栏布局，是本系统交互最复杂的页面之一：
+\begin{enumerate}
+    \item \textbf{左侧栏（章节导航，宽度240px）}：使用el-tree展示论文的完整章节树，当前批阅章节高亮显示。教师点击章节名称切换预览内容。章节标题旁标注该章节的批注数量；
+    \item \textbf{中间栏（论文预览，自适应宽度）}：以HTML渲染方式展示论文章节内容，模拟A4纸张样式。页面支持滚动浏览。教师拖拽选中文字后，选中区域以主题色高亮显示，并弹出浮动工具栏（添加批注按钮）。已添加批注的文字以黄色下划线标记，悬停时显示批注预览；
+    \item \textbf{右侧栏（批注面板，宽度320px）}：分为上下两部分。上部为批注列表区，展示当前章节的全部批注（按创建时间排序），每条批注显示批注内容摘要和创建时间。下部为批注编辑区，当教师选中文字后自动填充selected\_text预览，并提供textarea输入批注内容。
+\end{enumerate}
+
+\subsection{评分对话框设计}
+
+教师完成批注后，点击页面顶部的"评阅完成"按钮触发评分对话框。对话框采用el-dialog组件，宽度600px，包含以下控件：
+\begin{itemize}
+    \item 评语编辑器（el-input type="textarea"，支持富文本格式，最大5000字符）；
+    \item 评分滑块（el-slider，范围0-100，步进1，显示当前分值大号数字）；
+    \item 等级展示（根据分数自动换算并显示，如"85分→良"，带颜色标签）；
+    \item 操作类型单选组（el-radio-group）：通过（REVIEWED）/ 退回（RETURNED）；
+    \item 退回原因输入框（条件显示，仅当选择"退回"时出现，el-input，最小10字符）；
+    \item 确认提交按钮和取消按钮。
+\end{itemize}
+
+\section{UI设计规范}
+
+\subsection{颜色系统}
+
+为保证系统视觉一致性，定义以下颜色令牌：
+
+\begin{table}[htbp]
+\centering
+\caption{UI颜色系统规范}
+\label{tab:ui_color}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{用途} & \textbf{色值} & \textbf{Element Plus变量} & \textbf{适用范围} \\
+\hline
+主色 & \#409EFF & --el-color-primary & 按钮、链接、导航选中态 \\
+\hline
+成功 & \#67C23A & --el-color-success & 成功提示、已完成标签 \\
+\hline
+警告 & \#E6A23C & --el-color-warning & 警告提示、待处理标签 \\
+\hline
+危险 & \#F56C6C & --el-color-danger & 错误提示、删除操作、已退回标签 \\
+\hline
+信息 & \#909399 & --el-color-info & 辅助文字、禁用状态 \\
+\hline
+背景 & \#F5F7FA & — & 页面背景色、卡片背景色 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{字号层级}
+
+\begin{table}[htbp]
+\centering
+\caption{字号层级规范}
+\label{tab:font_size}
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{层级} & \textbf{字号} & \textbf{应用场景} \\
+\hline
+页面标题 & 20px / 18pt & 各功能页面的主标题 \\
+\hline
+卡片标题 & 16px / 14pt & 卡片组件标题、Dialog标题 \\
+\hline
+正文/表头 & 14px / 12pt & 表格内容、表单标签、段落文字 \\
+\hline
+辅助文字 & 12px / 10.5pt & 提示信息、时间戳、标签文字 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{间距规范}
+
+\begin{itemize}
+    \item \textbf{页面内边距}：内容区域与页面边缘保持24px间距；
+    \item \textbf{卡片内边距}：卡片容器内边距20px；
+    \item \textbf{组件间距}：相邻表单控件之间间距16px；
+    \item \textbf{标签与控件间距}：表单标签与输入框之间间距12px；
+    \item \textbf{段落间距}：卡片内多段文字间距8px。
+\end{itemize}
+
+\subsection{响应式断点}
+
+系统面向桌面端使用，但要求在不同屏幕尺寸下保持可用：
+
+\begin{itemize}
+    \item \textbf{大屏（$\ge$1200px）}：三栏布局完整展开，适合在1920×1080显示器上使用；
+    \item \textbf{中屏（768-1199px）}：右侧面板自动收起为浮动按钮，点击后以Drawer形式展开；
+    \item \textbf{小屏（<768px）}：切换为单栏布局，侧边导航自动收起为汉堡菜单。
+\end{itemize}
+
+\subsection{组件使用约定}
+
+\begin{itemize}
+    \item \textbf{表格（el-table）}：数据量超过20条时分页，每页20条。表格行支持hover高亮，关键操作的按钮在操作列展示；
+    \item \textbf{表单（el-form）}：必填字段标红色星号，提交前做前端校验，校验不通过时在字段下方显示错误提示文字；
+    \item \textbf{对话框（el-dialog）}：宽度统一为600px或800px，关闭方式支持点击遮罩关闭和右上角X关闭。提交操作后自动关闭并刷新父页面数据；
+    \item \textbf{消息提示（ElMessage）}：操作成功使用绿色提示（成功），操作失败使用红色提示（错误），持续时间均为3秒；
+    \item \textbf{加载状态（v-loading）}：数据获取和表单提交过程中显示加载遮罩，防止重复操作。
+\end{itemize}
+% 过渡：UI模块 → 缓存与部署
+% ============================================
+% F 负责：概要设计 - Redis缓存架构 + 部署架构
+% ============================================
+
+\section{缓存与部署架构设计}
+
+本章描述系统在缓存层与部署层的概要设计。缓存层基于 Redis 构建，为高频读取数据、用户会话及异步任务提供内存级访问加速；部署层采用 Docker 容器化方案，实现应用服务、数据库与缓存的统一编排与一键部署。
+
+% ===== 6.1 缓存架构概述 =====
+\subsection{缓存架构概述}
+
+ThesisGenerator 系统的读操作远多于写操作——学院信息、模板结构、参考文献格式等数据变更频率极低但查询频繁；论文章节在编辑过程中需要高频自动保存；JWT 令牌需要快速校验与失效管理。引入 Redis 作为统一缓存层，可显著降低 PostgreSQL 的读负载，提升系统整体响应速度。
+
+\subsubsection{缓存架构分层}
+
+系统缓存架构分为三层，自上而下依次为：
+
+\begin{enumerate}
+    \item \textbf{浏览器缓存层：} 前端 SPA 的静态资源（JS/CSS/字体）通过 HTTP Cache-Control 头缓存于浏览器，Template 结构等不常变数据缓存在 Vuex/Pinia 状态管理中，减少重复 API 请求。
+    \item \textbf{Redis 缓存层（核心）：} 部署于应用服务器与数据库之间，承载四项职责：
+    \begin{itemize}
+        \item 业务数据缓存：学院列表、模板版本、参考文献格式等读多写少数据。
+        \item 会话与令牌缓存：JWT Token 黑名单、Refresh Token、用户会话状态。
+        \item 草稿暂存：学生编辑过程中的章节草稿定时自动保存于 Redis，实现跨设备的编辑进度同步。
+        \item 限流与锁：登录接口的令牌桶限流计数器、导出任务的分布式锁。
+    \end{itemize}
+    \item \textbf{数据库持久层：} PostgreSQL 作为最终数据源，Redis 中所有缓存数据均有对应的数据库表，缓存失效后可回源查询重建。
+\end{enumerate}
+
+\subsubsection{缓存数据流}
+
+典型的数据读取流程如下：
+
+\begin{enumerate}
+    \item 客户端发起 API 请求 → Controller 层接收。
+    \item Service 层先查询 Redis 缓存，若命中（Cache Hit）则直接返回，耗时 $\le 5$ms。
+    \item 若未命中（Cache Miss），Service 查询 PostgreSQL，将结果序列化写入 Redis（设置合理 TTL），再返回给客户端。
+    \item 当源数据发生变更（增/删/改），Service 在事务提交后主动删除或更新对应的 Redis 缓存项（Cache-Aside 模式）。
+\end{enumerate}
+
+% ===== 6.2 Redis 数据结构设计 =====
+\subsection{Redis 数据结构设计}
+
+根据缓存数据的访问模式与生命周期，选用以下 Redis 数据结构：
+
+\begin{table}[htbp]
+\centering
+\caption{Redis 缓存项设计一览}
+\label{tab:redis-design}
+\begin{tabular}{|c|p{3cm}|c|c|c|}
+\hline
+\textbf{Key 模式} & \textbf{用途} & \textbf{类型} & \textbf{TTL} & \textbf{更新策略} \\
+\hline
+\texttt{token:<userId>} & JWT 令牌存储 & String & 24h & 登录写入/登出删除 \\
+\hline
+\texttt{refresh:<userId>} & Refresh Token & String & 7d & 登录写入/轮换更新 \\
+\hline
+\texttt{blacklist:<tokenId>} & Token 黑名单 & String & 24h & 登出/改密写入 \\
+\hline
+\texttt{college:list} & 学院全列表 & String(JSON) & 1h & 学院变更时删除 \\
+\hline
+\texttt{template:<id>} & 模板详情 & Hash & 30min & 模板更新时删除 \\
+\hline
+\texttt{template:version:<id>} & 模板版本 & Hash & 30min & 版本变更时删除 \\
+\hline
+\texttt{draft:<thesisId>:<sectionId>} & 章节草稿 & String(JSON) & 30min & 定时自动保存覆盖 \\
+\hline
+\texttt{rate:<ip>:<endpoint>} & 限流计数器 & String & 1min & 每次请求递增 \\
+\hline
+\texttt{lock:export:<thesisId>} & 导出分布式锁 & String & 30s & 导出开始设/结束删 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{序列化方案}
+
+采用 \texttt{GenericJackson2JsonRedisSerializer} 作为默认值序列化器，相较于 JDK 序列化具有以下优势：
+\begin{itemize}
+    \item 可读性好：缓存内容为 JSON 格式，便于运维排查。
+    \item 跨语言兼容：JSON 为通用格式，未来若引入其他语言微服务可直接读取。
+    \item 无需实现 \texttt{Serializable} 接口：对实体类零侵入。
+\end{itemize}
+
+Key 统一使用 \texttt{StringRedisSerializer}，保证 Key 的可读性。
+
+\subsubsection{连接池配置}
+
+Redis 客户端采用 Lettuce（Spring Boot Data Redis 默认实现），基于 Netty 异步 I/O，天然支持集群与哨兵模式。连接池参数设计如下：
+
+\begin{table}[htbp]
+\centering
+\caption{Lettuce 连接池配置}
+\label{tab:lettuce-config}
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{参数} & \textbf{值} & \textbf{说明} \\
+\hline
+max-active & 50 & 最大活跃连接数 \\
+\hline
+max-idle & 10 & 最大空闲连接数 \\
+\hline
+min-idle & 5 & 最小空闲连接数 \\
+\hline
+timeout & 3000ms & 连接超时时间 \\
+\hline
+\end{tabular}
+\end{table}
+
+% ===== 6.3 缓存策略详解 =====
+\subsection{缓存策略详解}
+
+\subsubsection{缓存预热}
+
+系统启动时通过 \texttt{@PostConstruct} 或 \texttt{ApplicationRunner} 将学院列表、当前生效的模板结构等启动必需数据预加载至 Redis，避免首批用户请求的冷启动延迟。
+
+\subsubsection{缓存失效策略}
+
+\begin{itemize}
+    \item \textbf{主动失效（Cache-Aside）：} 数据更新时，Service 层在数据库事务提交后显式调用 \texttt{redisTemplate.delete(key)} 删除对应缓存。下次读取时自动触发缓存重建。
+    \item \textbf{被动失效（TTL 过期）：} 每种缓存项设置合理 TTL，即使主动失效遗漏，也能在 TTL 到期后自动清理，防止脏数据长期驻留。
+    \item \textbf{批量失效：} 模板结构变更可能影响多个版本的缓存。采用 Key 前缀扫描（\texttt{template:*}）批量删除关联缓存项（生产环境慎用 \texttt{KEYS} 命令，改用 \texttt{SCAN} 游标迭代）。
+\end{itemize}
+
+\subsubsection{缓存穿透防护}
+
+对于查询不存在的数据（如查询不存在的论文 ID），若每次都穿透到数据库，可能被恶意利用造成数据库压力。防护措施：
+\begin{itemize}
+    \item 对查询结果为空的情况，缓存一个空值标记（如 \texttt{"NULL"}），TTL 设为较短的 60 秒。
+    \item 在 Service 层对查询参数进行合法性校验（如 ID 必须为正整数），非法参数直接返回。
+\end{itemize}
+
+\subsubsection{缓存雪崩防护}
+
+大量缓存项在同一时刻过期，导致瞬时流量全部打到数据库。防护措施：
+\begin{itemize}
+    \item 为不同缓存项的 TTL 添加随机偏移量（$\pm 10\%$），避免集中过期。
+    \item 核心缓存项（如学院列表）设置不过期或超长 TTL，仅在数据变更时主动刷新。
+\end{itemize}
+
+\subsubsection{缓存击穿防护}
+
+热点数据（如当前学期模板）在缓存过期瞬间被大量并发请求击穿到数据库。防护措施：
+\begin{itemize}
+    \item 使用 Redis \texttt{SETNX} 命令实现简单的分布式互斥锁，仅允许第一个未命中缓存的线程去查询数据库并重建缓存，其余线程等待或返回旧值。
+\end{itemize}
+
+% ===== 6.4 部署架构概述 =====
+\subsection{部署架构概述}
+
+ThesisGenerator 采用单机容器化部署方案（支持向集群平滑扩展），以 Docker Compose 编排三个核心服务：Spring Boot 应用、PostgreSQL 数据库、Redis 缓存。
+
+\subsubsection{容器拓扑}
+
+\begin{figure}[htbp]
+\centering
+\begin{verbatim}
+┌──────────────────────────────────────────────────────┐
+│                    Docker Host                        │
+│  ┌──────────────────────────────────────────────┐    │
+│  │              nginx (可选反向代理)              │    │
+│  │              0.0.0.0:80→8080                 │    │
+│  └──────────────────┬───────────────────────────┘    │
+│                     │                                 │
+│  ┌──────────────────▼───────────────────────────┐    │
+│  │         thesis-generator (Spring Boot)        │    │
+│  │               0.0.0.0:8080                     │    │
+│  │    ┌─────────────────────────────────────┐   │    │
+│  │    │  内嵌 Vue3 前端静态资源 (dist/)      │   │    │
+│  │    └─────────────────────────────────────┘   │    │
+│  └──────────┬───────────────────┬───────────────┘    │
+│             │                   │                     │
+│  ┌──────────▼───────┐  ┌────────▼──────────┐        │
+│  │   PostgreSQL      │  │   Redis            │        │
+│  │   0.0.0.0:5432    │  │   0.0.0.0:6379     │        │
+│  │   data volume     │  │   data volume      │        │
+│  └──────────────────┘  └───────────────────┘        │
+└──────────────────────────────────────────────────────┘
+\end{verbatim}
+\caption{系统容器拓扑图}
+\label{fig:deploy-topology}
+\end{figure}
+
+\subsubsection{各组件说明}
+
+\begin{table}[htbp]
+\centering
+\caption{部署组件清单}
+\label{tab:deploy-components}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{组件} & \textbf{镜像/版本} & \textbf{端口} & \textbf{职责} \\
+\hline
+thesis-generator & 自构建 (openjdk:21-jre-slim) & 8080 & Spring Boot 业务服务 \\
+\hline
+postgres & postgres:16-alpine & 5432 & 关系数据库持久化 \\
+\hline
+redis & redis:7-alpine & 6379 & 缓存与会话存储 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{数据卷规划}
+
+\begin{table}[htbp]
+\centering
+\caption{数据卷与挂载点}
+\label{tab:volumes}
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{数据卷} & \textbf{容器内路径} & \textbf{用途} \\
+\hline
+pgdata & /var/lib/postgresql/data & 数据库文件持久化 \\
+\hline
+redisdata & /data & Redis RDB/AOF 持久化 \\
+\hline
+uploads & /app/uploads/images & 上传图片存储 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{网络规划}
+
+所有容器加入同一 Docker 自定义桥接网络 \texttt{thesis-net}，通过容器名进行 DNS 解析（如 PostgreSQL 的 JDBC URL 中 host 写 \texttt{postgres} 而非 localhost）。不对外暴露 PostgreSQL（5432）与 Redis（6379）端口（仅应用容器内部访问），仅暴露应用端口 8080。
+
+\subsubsection{健康检查与重启策略}
+
+\begin{itemize}
+    \item \textbf{应用健康检查：} 通过 Spring Boot Actuator 的 \texttt{/actuator/health} 端点，Docker Compose 配置 \texttt{healthcheck} 指令定期探测。连续 3 次失败标记为 unhealthy。
+    \item \textbf{依赖健康检查：} 应用容器配置 \texttt{depends\_on} 与 \texttt{condition: service\_healthy}，确保 PostgreSQL 与 Redis 先于应用启动并就绪。
+    \item \textbf{重启策略：} 所有容器配置 \texttt{restart: unless-stopped}，保证宿主机重启后服务自动恢复。
+\end{itemize}
+
+\subsubsection{环境配置分层}
+
+采用 Spring Profile 实现多环境隔离：
+
+\begin{table}[htbp]
+\centering
+\caption{多环境配置策略}
+\label{tab:env-config}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{Profile} & \textbf{数据库} & \textbf{Redis} & \textbf{JPA DDL} \\
+\hline
+dev & localhost:5432 & localhost:6379 & update \\
+\hline
+test & test-db:5432 & test-redis:6379 & update \\
+\hline
+prod & prod-db:5432 & prod-redis:6379 & validate \\
+\hline
+\end{tabular}
+\end{table}
+
+通过 Docker Compose 的 \texttt{environment} 字段传入 \texttt{SPRING\_PROFILES\_ACTIVE=prod}，覆盖 \texttt{application.properties} 中的默认值。
+
+\subsubsection{资源限制}
+
+为每个容器设置 CPU 与内存上限，防止单个服务异常时耗尽宿主机资源：
+
+\begin{itemize}
+    \item 应用容器：CPU 上限 2 核，内存上限 1GB。
+    \item PostgreSQL：CPU 上限 1 核，内存上限 512MB。
+    \item Redis：CPU 上限 0.5 核，内存上限 256MB。
+\end{itemize}
+
+\subsubsection{部署流程}
+
+\begin{enumerate}
+    \item 构建应用 JAR：\texttt{./mvnw clean package -DskipTests}。
+    \item 构建 Docker 镜像：\texttt{docker build -t thesis-generator:latest .}。
+    \item 一键启动：\texttt{docker-compose up -d}（自动拉取 postgres 与 redis 镜像，启动全部服务）。
+    \item 验证：访问 \texttt{http://localhost:8080/actuator/health} 确认所有组件就绪。
+    \item 停止：\texttt{docker-compose down}（保留数据卷）；\texttt{docker-compose down -v}（销毁数据卷）。
+\end{enumerate}
+\end{document}
