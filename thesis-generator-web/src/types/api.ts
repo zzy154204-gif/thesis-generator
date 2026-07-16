@@ -1,4 +1,11 @@
-// 用户信息类型
+// 统一响应包装
+export interface ApiResult<T = any> {
+  code: number
+  message: string
+  data: T
+}
+
+// 用户信息类型（与后端 LoginResponse 对齐）
 export interface UserInfo {
   userId: number
   username: string
@@ -22,17 +29,13 @@ export interface RegisterRequest {
   collegeId?: number
 }
 
-// 登录/注册响应
+// 登录/注册响应（与后端 LoginResponse 对齐：扁平结构）
 export interface AuthResponse {
   token: string
-  user: UserInfo
-}
-
-// 统一响应包装
-export interface ApiResult<T = any> {
-  code: number
-  message: string
-  data: T
+  userId: number
+  username: string
+  realName: string
+  role: string
 }
 
 // 论文

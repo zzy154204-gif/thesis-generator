@@ -7,7 +7,7 @@ import com.example.thesisgenerator.dto.LoginResponse;
 import com.example.thesisgenerator.dto.RegisterRequest;
 import com.example.thesisgenerator.entity.User;
 import com.example.thesisgenerator.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -15,13 +15,22 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 
 @Service
-@RequiredArgsConstructor
 public class AuthService {
 
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
     private final RedisTemplate<String, Object> redisTemplate;
     private final BCryptPasswordEncoder passwordEncoder;
+
+    public AuthService(UserRepository userRepository,
+                       JwtUtil jwtUtil,
+                       BCryptPasswordEncoder passwordEncoder,
+                       @Autowired(required = false) RedisTemplate<String, Object> redisTemplate) {
+        this.userRepository = userRepository;
+        this.jwtUtil = jwtUtil;
+        this.passwordEncoder = passwordEncoder;
+        this.redisTemplate = redisTemplate;
+    }
 
     public LoginResponse login(LoginRequest request) {
         User user = userRepository.findByUsername(request.getUsername())
@@ -37,12 +46,14 @@ public class AuthService {
 
         String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
 
-        // Token 缓存到 Redis
-        redisTemplate.opsForValue().set(
-                "token:" + user.getId(),
-                token,
-                Duration.ofHours(24)
-        );
+        // Token 缓存到 Redis（如果可用）
+        if (redisTemplate != null) {
+            redisTemplate.opsForValue().set(
+                    "token:" + user.getId(),
+                    token,
+                    Duration.ofHours(24)
+            );
+        }
 
         return new LoginResponse(token, user.getId(), user.getUsername(), user.getRealName(), user.getRole());
     }
@@ -69,16 +80,21 @@ public class AuthService {
 
         String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
 
-        redisTemplate.opsForValue().set(
-                "token:" + user.getId(),
-                token,
-                Duration.ofHours(24)
-        );
+        // Token 缓存到 Redis（如果可用）
+        if (redisTemplate != null) {
+            redisTemplate.opsForValue().set(
+                    "token:" + user.getId(),
+                    token,
+                    Duration.ofHours(24)
+            );
+        }
 
         return new LoginResponse(token, user.getId(), user.getUsername(), user.getRealName(), user.getRole());
     }
 
     public void logout(Long userId) {
-        redisTemplate.delete("token:" + userId);
+        if (redisTemplate != null) {
+            redisTemplate.delete("token:" + userId);
+        }
     }
 }
