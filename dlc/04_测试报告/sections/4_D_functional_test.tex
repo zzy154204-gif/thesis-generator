@@ -67,6 +67,26 @@
     \end{tabular}
 \end{table}
 
+\subsubsection{测试模块M2：个人信息管理}
+
+\begin{table}[htbp]
+    \centering
+    \caption{M2-个人信息管理测试用例}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试场景} & \textbf{输入/操作} & \textbf{预期结果} \\
+        \hline
+        TC-M2-01 & 查看个人信息 & 登录后进入个人中心 & 正确显示学号、姓名、邮箱、手机号 \\
+        \hline
+        TC-M2-02 & 修改姓名和邮箱 & 输入新姓名和新邮箱 & 修改成功，页面刷新显示新信息 \\
+        \hline
+        TC-M2-03 & 修改密码（正确原密码） & 输入正确原密码+新密码 & 密码修改成功，提示重新登录 \\
+        \hline
+        TC-M2-04 & 修改密码（错误原密码） & 输入错误原密码+新密码 & 提示"原密码错误"，修改失败 \\
+        \hline
+    \end{tabular}
+\end{table}
+
 \subsubsection{测试模块M3：论文项目管理}
 
 \begin{table}[htbp]
@@ -135,6 +155,48 @@
         TC-M4-14 & 图片上传 & 插入图片→选文件 & 图片上传并显示 \\
         \hline
         TC-M4-15 & 表格插入 & 插入表格→选行列 & 表格正确生成 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{测试模块M5：参考文献管理}
+
+\begin{table}[htbp]
+    \centering
+    \caption{M5-参考文献管理测试用例}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试场景} & \textbf{输入/操作} & \textbf{预期结果} \\
+        \hline
+        TC-M5-01 & 添加期刊论文[J] & 填写作者、标题、期刊、年份、卷号、页码 & 文献添加成功，出现在列表中 \\
+        \hline
+        TC-M5-02 & 添加会议论文[C] & 填写作者、标题、会议名称、年份 & 文献添加成功，表单字段随类型切换 \\
+        \hline
+        TC-M5-03 & 编辑参考文献 & 修改已有文献的标题和年份 & 修改成功，列表刷新 \\
+        \hline
+        TC-M5-04 & 删除参考文献 & 点击删除→确认 & 文献删除，若正文有引用则提示 \\
+        \hline
+        TC-M5-05 & 插入引用标记 & 光标定位正文某处→选文献→引用 & 正文光标处插入 [N] 标记 \\
+        \hline
+        TC-M5-06 & 引用编号自动重排 & 新增一条文献并插入引用 & 正文引用标记和文末列表编号同步更新 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{测试模块M6：模板选择与预览}
+
+\begin{table}[htbp]
+    \centering
+    \caption{M6-模板选择与预览测试用例}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试场景} & \textbf{输入/操作} & \textbf{预期结果} \\
+        \hline
+        TC-M6-01 & 浏览可用模板 & 创建论文时查看模板列表 & 展示所有已启用模板，含缩略图和说明 \\
+        \hline
+        TC-M6-02 & 按学院筛选模板 & 选择学院下拉筛选 & 仅显示该学院关联的模板 \\
+        \hline
+        TC-M6-03 & 模板实时预览 & 选择不同模板 & 预览区实时更新为所选模板样式 \\
         \hline
     \end{tabular}
 \end{table}
