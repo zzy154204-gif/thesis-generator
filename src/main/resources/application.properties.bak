@@ -5,12 +5,12 @@
 spring.application.name=thesis-generator
 
 # ---- 服务器 ----
-server.port=8080
+server.port=9090
 
 # ---- PostgreSQL 数据库（请改为你自己的配置）----
 spring.datasource.url=jdbc:postgresql://localhost:5432/thesis_generator
 spring.datasource.username=postgres
-spring.datasource.password=xht7428953
+spring.datasource.password=123456
 spring.datasource.driver-class-name=org.postgresql.Driver
 
 # ---- JPA ----
