@@ -1,4 +1,4 @@
-﻿package com.example.thesisgenerator.repository;
+package com.example.thesisgenerator.repository;
 
 import com.example.thesisgenerator.entity.Thesis;
 import org.springframework.data.jpa.repository.JpaRepository;

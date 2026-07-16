@@ -1,4 +1,4 @@
-﻿package com.example.thesisgenerator.controller;
+package com.example.thesisgenerator.controller;
 
 import com.example.thesisgenerator.common.Result;
 import com.example.thesisgenerator.entity.Template;
