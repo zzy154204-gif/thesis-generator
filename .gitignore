@@ -59,3 +59,4 @@ Thumbs.db
 thesis-generator-web/node_modules/
 thesis-generator-web/dist/
 thesis-generator-web/.vite/
+redis-binaries/

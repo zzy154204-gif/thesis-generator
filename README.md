@@ -37,7 +37,7 @@ cp src/main/resources/application.properties src/main/resources/application-loca
 mvnw.cmd spring-boot:run              # Windows
 
 # 5. 启动前端
-cd frontend
+cd thesis-generator-web
 npm install
 npm run dev
 ```
@@ -61,7 +61,14 @@ thesis-generator/
 │       ├── dto/                 # 数据传输对象
 │       ├── service/             # 业务逻辑层
 │       └── controller/          # RESTful 控制器
-├── frontend/                    # 前端 Vue 3 源码（待初始化）
+├── thesis-generator-web/          # 前端 Vue 3 源码
+│   ├── src/
+│   │   ├── api/                    # API 接口层（auth/paper/section/...）
+│   │   ├── components/editor/      # 编辑器组件（Toolbar/SectionTree/ReferencePanel）
+│   │   ├── views/                  # 页面（Login/Register/PaperList/PaperEditor/...）
+│   │   ├── stores/                 # Pinia 状态管理
+│   │   ├── router/                 # 路由配置 + 鉴权守卫
+│   │   └── types/                  # TypeScript 类型定义
 └── pom.xml                      # Maven 配置
 ```
 
