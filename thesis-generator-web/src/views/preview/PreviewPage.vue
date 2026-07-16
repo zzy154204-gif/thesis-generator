@@ -2,7 +2,7 @@
   <DefaultLayout>
     <div class="preview-page">
       <div class="preview-toolbar">
-        <el-button text :icon="ArrowLeft" @click="window.close()">关闭预览</el-button>
+        <el-button text :icon="ArrowLeft" @click="handleClose">关闭预览</el-button>
         <span class="title">{{ paper?.title || '论文预览' }}</span>
         <el-button type="primary" :icon="Download" @click="handleExport">导出</el-button>
       </div>
@@ -31,6 +31,10 @@ const previewHtml = ref('')
 function handleExport() {
   // TODO: 打开导出对话框或直接触发导出
   ElMessage.info('导出功能开发中')
+}
+
+function handleClose() {
+  window.close()
 }
 
 onMounted(async () => {
