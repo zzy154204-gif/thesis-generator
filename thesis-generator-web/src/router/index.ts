@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { getToken } from '@/utils/token'
+import DefaultLayout from "@/layouts/DefaultLayout.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -65,6 +66,17 @@ const router = createRouter({
     {
       path: '/:pathMatch(.*)*',
       redirect: '/papers',
+    },
+    {
+      path: '/admin',
+      component: DefaultLayout,
+      meta: { requiresAuth: true, roles: ['ADMIN'] },
+      children: [
+        { path: 'colleges', component: () => import('@/views/admin/CollegeManage.vue'), meta: { title: '学院管理' } },
+        { path: 'templates', component: () => import('@/views/admin/TemplateList.vue'), meta: { title: '模板管理' } },
+        { path: 'templates/new', component: () => import('@/views/admin/TemplateEditor.vue'), meta: { title: '新建模板' } },
+        { path: 'templates/:id', component: () => import('@/views/admin/TemplateEditor.vue'), meta: { title: '编辑模板' } },
+      ]
     },
   ],
 })
