@@ -25,22 +25,3 @@ export function updatePaper(id: number, data: Partial<Thesis>): Promise<ApiResul
 export function deletePaper(id: number): Promise<ApiResult> {
   return request.delete(`/papers/${id}`)
 }
-
-/** 导出论文（下载文件） */
-export async function exportPaper(paperId: number, format: 'DOCX' | 'PDF'): Promise<void> {
-  const response = await request.get(`/papers/${paperId}/export`, {
-    params: { format },
-    responseType: 'blob',
-  })
-
-  // 创建下载链接
-  const blob = new Blob([response.data])
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `论文_${paperId}.${format.toLowerCase()}`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  window.URL.revokeObjectURL(url)
-}

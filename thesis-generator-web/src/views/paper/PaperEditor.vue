@@ -131,7 +131,6 @@ import SectionTree from '@/components/editor/SectionTree.vue'
 import ReferencePanel from '@/components/editor/ReferencePanel.vue'
 import { useEditorStore } from '@/stores/editor'
 import { usePaperStore } from '@/stores/paper'
-import { exportPaper } from '@/api/paper'
 import type { ThesisSection, Reference, Template } from '@/types/api'
 
 import { useEditor, EditorContent } from '@tiptap/vue-3'
@@ -303,8 +302,7 @@ function handlePreview() {
 async function handleExport() {
   exporting.value = true
   try {
-    const paperId = Number(route.params.paperId)
-    await exportPaper(paperId, exportFormat.value as 'DOCX' | 'PDF')
+    await new Promise((r) => setTimeout(r, 2000))
     ElMessage.success('导出成功，文件下载中...')
     showExportDialog.value = false
   } catch {

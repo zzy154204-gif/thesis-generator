@@ -24,14 +24,6 @@ request.interceptors.request.use(
 // 响应拦截器：统一错误处理
 request.interceptors.response.use(
   (response) => {
-    // 文件下载（blob）直接返回
-    const contentType = response.headers['content-type'] || ''
-    if (contentType.includes('application/pdf') ||
-        contentType.includes('application/vnd.openxmlformats') ||
-        contentType.includes('application/octet-stream')) {
-      return response
-    }
-
     const data = response.data as ApiResult
     if (data.code !== 200) {
       ElMessage.error(data.message || '请求失败')
