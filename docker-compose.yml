@@ -1,80 +1,25 @@
-version: "3.9"
+version: '3.8'
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: thesis-pg
+    container_name: thesis-postgres
     environment:
       POSTGRES_DB: thesis_generator
-      POSTGRES_USER: thesis_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-thesis_pass}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: thesis2026
+    ports:
+      - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks:
-      - thesis-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U thesis_user -d thesis_generator"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
 
   redis:
     image: redis:7-alpine
     container_name: thesis-redis
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    volumes:
-      - redisdata:/data
-    networks:
-      - thesis-net
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
-
-  app:
-    build: .
-    container_name: thesis-app
     ports:
-      - "8080:8080"
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/thesis_generator
-      SPRING_DATASOURCE_USERNAME: thesis_user
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-thesis_pass}
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      JWT_SECRET: ${JWT_SECRET}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - thesis-net
+      - "6379:6379"
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: "2.0"
-          memory: 1G
 
 volumes:
-  pgdata:
-  redisdata:
-
-networks:
-  thesis-net:
-    driver: bridge
+  postgres_data:
