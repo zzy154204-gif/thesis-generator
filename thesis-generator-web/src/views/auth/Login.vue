@@ -14,8 +14,8 @@
         size="large"
         @keyup.enter="handleLogin"
       >
-        <el-form-item label="学号" prop="username">
-          <el-input v-model="form.username" placeholder="请输入学号" :prefix-icon="User" />
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="form.username" placeholder="请输入用户名" :prefix-icon="User" />
         </el-form-item>
 
         <el-form-item label="密码" prop="password">
@@ -72,8 +72,7 @@ const form = reactive({
 
 const rules: FormRules = {
   username: [
-    { required: true, message: '请输入学号', trigger: 'blur' },
-    { pattern: /^\d{8,12}$/, message: '学号为8-12位数字', trigger: 'blur' },
+    { required: true, message: '请输入用户名', trigger: 'blur' },
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
