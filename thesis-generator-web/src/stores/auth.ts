@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as loginApi, register as registerApi, logout as logoutApi, getProfile } from '@/api/auth'
+import { login as loginApi, register as registerApi, logout as logoutApi } from '@/api/auth'
 import { setToken, removeToken, getToken } from '@/utils/token'
 import type { UserInfo, LoginRequest, RegisterRequest } from '@/types/api'
 
@@ -12,31 +12,32 @@ export const useAuthStore = defineStore('auth', () => {
   const isStudent = computed(() => user.value?.role === 'STUDENT')
   const isTeacher = computed(() => user.value?.role === 'TEACHER')
 
+  // 从后端扁平 AuthResponse 构建 UserInfo
+  function setAuthFromResponse(data: { token: string; userId: number; username: string; realName: string; role: string }) {
+    token.value = data.token
+    user.value = {
+      userId: data.userId,
+      username: data.username,
+      realName: data.realName,
+      role: data.role as UserInfo['role'],
+    }
+    setToken(data.token)
+  }
+
   async function login(data: LoginRequest) {
     const res = await loginApi(data)
-    token.value = res.data.token
-    user.value = res.data.user
-    setToken(res.data.token)
+    setAuthFromResponse(res.data)
   }
 
   async function register(data: RegisterRequest) {
     const res = await registerApi(data)
-    token.value = res.data.token
-    user.value = res.data.user
-    setToken(res.data.token)
+    setAuthFromResponse(res.data)
   }
 
+  // TODO: 待后端实现 GET /auth/profile 后对接
   async function fetchProfile() {
+    // 暂时从 token 解析用户信息，后续对接后端 profile 接口
     if (!token.value) return
-    try {
-      const res = await getProfile()
-      user.value = res.data
-    } catch {
-      // token 可能过期，清除
-      token.value = null
-      user.value = null
-      removeToken()
-    }
   }
 
   function logout() {

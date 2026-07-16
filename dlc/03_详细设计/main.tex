@@ -1,30 +1,2753 @@
-% 详细设计说明书
+% ============================================
+% 在线论文文档自动生成工具 — 详细设计说明书（完整版）
+% ============================================
+
 \documentclass{../softeng}
 
 \begin{document}
 
-% 封面
 \doccover{详细设计说明书}
 {在线论文文档自动生成工具}
 {V2026.07}
 
-% 目录
 \tableofcontents
 \newpage
 
-% 修订记录
 \begin{revrecord}
-V1.0 & 2026-07-17 & C & 全组 & 初稿完成 \\
+V1.0 & 2026-07-17 & 全组 & 全组 & 初稿完成 \
 \hline
 \end{revrecord}
+% ============================================
+% 第1章：数据库详细设计 + 认证权限模块详细设计
+% 负责人：A
+% ============================================
 
-% ===== 以下按模块分工，每人撰写对应章节 =====
+\section{数据库详细设计}
 
-\input{sections/1_A_db_auth}
-\input{sections/2_B_template_thesis}
-\input{sections/3_C_export_algo}
-\input{sections/4_D_student_ui}
-\input{sections/5_E_admin_teacher_ui}
-\input{sections/6_F_review_cache_deploy}
+\subsection{数据库设计概述}
 
+系统数据库采用PostgreSQL 16关系型数据库，数据库名称为\verb|thesis_generator|。整体遵循第三范式（3NF）设计，以论文生命周期为主线，围绕用户角色管理、模板配置管理、论文内容编辑、提交批阅流程四大业务域组织数据表结构。以下给出全部数据表的完整DDL（Data Definition Language）语句及详细字段说明。
+
+\subsection{学院表（sys\_college）}
+
+学院表用于存储高校下设各学院的基础信息，是整个系统数据组织体系的最上层实体。用户在注册时选择所属学院，模板按学院维度进行分类管理。
+
+\begin{lstlisting}[language=SQL,caption={sys\_college 建表语句}]
+CREATE TABLE IF NOT EXISTS sys_college (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+\begin{itemize}
+    \item \verb|id|：BIGSERIAL自增主键，数据库自动分配唯一标识；
+    \item \verb|name|：学院全称，VARCHAR(100)，不可为空；
+    \item \verb|code|：学院编号（如CS、EE、MATH），VARCHAR(50)，唯一约束防止重复；
+    \item \verb|created\_at / updated\_at|：时间戳字段，记录创建和更新时间。
+\end{itemize}
+
+\subsection{用户表（sys\_user）}
+
+用户表是系统权限体系的核心，存储全部用户（管理员、学生、教师）的账号信息、加密密码、角色标识和学院归属。
+
+\begin{lstlisting}[language=SQL,caption={sys\_user 建表语句}]
+CREATE TABLE IF NOT EXISTS sys_user (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    real_name VARCHAR(50) NOT NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'STUDENT', 'TEACHER')),
+    college_id BIGINT REFERENCES sys_college(id),
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+\begin{itemize}
+    \item \verb|username|：登录用户名，VARCHAR(50)，唯一约束，用于登录认证；
+    \item \verb|password|：BCrypt哈希加密后的密码密文，VARCHAR(255)以容纳60字符的BCrypt哈希值；
+    \item \verb|real\_name|：用户真实姓名，用于前端界面显示；
+    \item \verb|role|：角色枚举，CHECK约束限定为ADMIN、STUDENT、TEACHER三种取值；
+    \item \verb|college\_id|：外键引用sys\_college.id，可为空（管理员可不归属特定学院）；
+    \item \verb|enabled|：账号启用状态，禁用后该账号无法登录。
+\end{itemize}
+
+角色权限体系设计如表\ref{tab:role_auth}所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{角色权限矩阵}
+    \label{tab:role_auth}
+    \begin{tabular}{|l|c|c|c|}
+        \hline
+        \textbf{功能权限} & \textbf{ADMIN} & \textbf{STUDENT} & \textbf{TEACHER} \\
+        \hline
+        用户注册 & $\checkmark$ & $\checkmark$（仅STUDENT/TEACHER） & $\checkmark$（仅STUDENT/TEACHER） \\
+        \hline
+        模板管理（CRUD） & $\checkmark$ & $\times$ & $\times$ \\
+        \hline
+        学院管理 & $\checkmark$ & $\times$ & $\times$ \\
+        \hline
+        创建/编辑论文 & $\times$ & $\checkmark$ & $\times$ \\
+        \hline
+        文档导出 & $\times$ & $\checkmark$ & $\times$ \\
+        \hline
+        提交论文 & $\times$ & $\checkmark$ & $\times$ \\
+        \hline
+        批注/评阅论文 & $\times$ & $\times$ & $\checkmark$ \\
+        \hline
+        查看批阅结果 & $\times$ & $\checkmark$ & $\checkmark$ \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{论文模板表（template）}
+
+模板表存储由管理员创建的论文模板基本信息，每个模板可关联特定学院，并设定论文类型。
+
+\begin{lstlisting}[language=SQL,caption={template 建表语句}]
+CREATE TABLE IF NOT EXISTS template (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('GRADUATION', 'COURSE', 'PROJECT')),
+    college_id BIGINT REFERENCES sys_college(id),
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+\begin{itemize}
+    \item \verb|name|：模板名称（如"计算机学院本科毕业论文模板"），VARCHAR(200)；
+    \item \verb|type|：论文类型，CHECK约束限定三种取值：GRADUATION（毕业论文）、COURSE（课程论文）、PROJECT（项目论文）；
+    \item \verb|college\_id|：外键引用sys\_college.id，实现按学院的模板隔离；
+    \item \verb|enabled|：启用状态，停用的模板不显示给学生创建论文。
+\end{itemize}
+
+\subsection{模板版本表（template\_version）}
+
+模板版本表是系统灵活性的关键设计。利用PostgreSQL特有的JSONB类型存储可变结构的配置数据，避免了为不同模板类型设计大量冗余字段的问题。
+
+\begin{lstlisting}[language=SQL,caption={template\_version 建表语句}]
+CREATE TABLE IF NOT EXISTS template_version (
+    id BIGSERIAL PRIMARY KEY,
+    template_id BIGINT NOT NULL REFERENCES template(id) ON DELETE CASCADE,
+    version_number VARCHAR(20) NOT NULL DEFAULT '1.0',
+    is_current BOOLEAN DEFAULT TRUE,
+    cover_fields JSONB NOT NULL DEFAULT '[]',
+    chapter_structure JSONB NOT NULL DEFAULT '[]',
+    format_config JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+JSONB配置字段的设计与使用场景：
+
+\begin{itemize}
+    \item \verb|cover\_fields|（JSON数组）：定义封面需填写的字段列表和显示顺序。示例：
+    \begin{lstlisting}[language=Java]
+[{"key":"title","label":"论文题目","required":true},
+ {"key":"author","label":"作者姓名","required":true},
+ {"key":"college","label":"学院","required":true}]
+    \end{lstlisting}
+    \item \verb|chapter\_structure|（JSON数组）：定义论文的章节树结构。示例：
+    \begin{lstlisting}[language=Java]
+[{"key":"abstract","title":"摘要","type":"front"},
+ {"key":"ch1","title":"绪论","type":"chapter","children":[
+     {"key":"ch1_1","title":"研究背景"},
+     {"key":"ch1_2","title":"研究意义"}]},
+ {"key":"ref","title":"参考文献","type":"back"}]
+    \end{lstlisting}
+    \item \verb|format\_config|（JSON对象）：定义排版格式参数。示例：
+    \begin{lstlisting}[language=Java]
+{"fontFamily":"SimSun","fontSize":12,"lineSpacing":1.5,
+ "marginTop":2.5,"marginBottom":2.5,
+ "marginLeft":3.0,"marginRight":2.5,"pageSize":"A4"}
+    \end{lstlisting}
+\end{itemize}
+
+\verb|ON DELETE CASCADE|确保删除模板时其全部版本记录同步删除，维护数据一致性。
+
+\subsection{论文主表（thesis）}
+
+论文主表记录每篇论文的元信息和生命周期状态。
+
+\begin{lstlisting}[language=SQL,caption={thesis 建表语句}]
+CREATE TABLE IF NOT EXISTS thesis (
+    id BIGSERIAL PRIMARY KEY,
+    student_id BIGINT NOT NULL REFERENCES sys_user(id),
+    template_version_id BIGINT REFERENCES template_version(id),
+    title VARCHAR(500) NOT NULL DEFAULT '未命名论文',
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
+        CHECK (status IN ('DRAFT','COMPLETED','SUBMITTED',
+               'REVIEWED','RETURNED','GENERATING')),
+    is_locked BOOLEAN DEFAULT FALSE,
+    college_id BIGINT REFERENCES sys_college(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+论文状态机流转规则如下，状态转换关系如图\ref{fig:status_flow}所示：
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tabular}{ccccccc}
+        \fbox{DRAFT} & $\rightarrow$ & \fbox{COMPLETED} & $\rightarrow$ & \fbox{SUBMITTED} & $\rightarrow$ & \fbox{REVIEWED} \\
+        & & & & \hspace{-2em}$\downarrow$ & & \\
+        & & & & \fbox{RETURNED} & $\rightarrow$ & \fbox{DRAFT（解锁）} \\
+    \end{tabular}
+    \caption{论文状态流转图}
+    \label{fig:status_flow}
+\end{figure}
+
+\begin{itemize}
+    \item DRAFT → COMPLETED：学生确认论文内容完成；
+    \item COMPLETED → SUBMITTED：学生提交至教师，\verb|is_locked|置为TRUE，论文只读；
+    \item SUBMITTED → REVIEWED：教师完成批阅，给出分数和等级；
+    \item SUBMITTED → RETURNED：教师退回论文，附带退回原因，\verb|is_locked|置为FALSE，学生可重新编辑；
+    \item GENERATING：DOCX/PDF导出任务进行中的中间状态。
+\end{itemize}
+
+\subsection{论文章节表（thesis\_section）}
+
+章节表存储每篇论文的各章节结构信息和富文本HTML内容。
+
+\begin{lstlisting}[language=SQL,caption={thesis\_section 建表语句}]
+CREATE TABLE IF NOT EXISTS thesis_section (
+    id BIGSERIAL PRIMARY KEY,
+    thesis_id BIGINT NOT NULL REFERENCES thesis(id) ON DELETE CASCADE,
+    title VARCHAR(300) NOT NULL,
+    section_key VARCHAR(100) NOT NULL,
+    content TEXT DEFAULT '',
+    draft_content TEXT DEFAULT '',
+    section_type VARCHAR(50) DEFAULT 'chapter',
+    parent_id BIGINT REFERENCES thesis_section(id),
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+\begin{itemize}
+    \item \verb|section\_key|：章节的业务标识键（如ch1、ch1\_1、abstract），与模板version的chapter\_structure中的key字段对应；
+    \item \verb|content|：正式保存的章节HTML内容；
+    \item \verb|draft\_content|：自动保存的草稿内容，独立于正式保存，30秒自动触发保存；
+    \item \verb|section\_type|：章节类型标识（chapter/section/subsection/front/back），用于排版逻辑判断；
+    \item \verb|parent\_id|：自引用外键，实现多级章节嵌套（父章节→子章节）；
+    \item \verb|sort\_order|：同级章节的排序序号，整数递增，前端按此排序展示；
+    \item \verb|ON DELETE CASCADE|：删除论文时自动删除全部章节记录。
+\end{itemize}
+
+\subsection{参考文献表（thesis\_reference）}
+
+参考文献表遵循GB/T 7714-2015标准的数据元素设计。
+
+\begin{lstlisting}[language=SQL,caption={thesis\_reference 建表语句}]
+CREATE TABLE IF NOT EXISTS thesis_reference (
+    id BIGSERIAL PRIMARY KEY,
+    thesis_id BIGINT NOT NULL REFERENCES thesis(id) ON DELETE CASCADE,
+    authors VARCHAR(500) NOT NULL,
+    title VARCHAR(500) NOT NULL,
+    journal VARCHAR(300),
+    year VARCHAR(10),
+    volume VARCHAR(50),
+    issue VARCHAR(50),
+    pages VARCHAR(50),
+    doi VARCHAR(200),
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+字段设计覆盖了期刊论文、会议论文、学位论文、图书等常见文献类型的核心字段，\verb|doi|字段支持DOI链接跳转。
+
+\subsection{图片资源表（thesis\_image）}
+
+\begin{lstlisting}[language=SQL,caption={thesis\_image 建表语句}]
+CREATE TABLE IF NOT EXISTS thesis_image (
+    id BIGSERIAL PRIMARY KEY,
+    thesis_id BIGINT NOT NULL REFERENCES thesis(id) ON DELETE CASCADE,
+    section_id BIGINT REFERENCES thesis_section(id),
+    original_name VARCHAR(500) NOT NULL,
+    stored_path VARCHAR(500) NOT NULL,
+    url VARCHAR(500) NOT NULL,
+    file_size BIGINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+\begin{itemize}
+    \item \verb|original\_name|：用户上传时的原始文件名；
+    \item \verb|stored\_path|：服务端文件系统存储路径；
+    \item \verb|url|：对外访问URL（前端img标签src引用）；
+    \item \verb|file\_size|：文件大小（字节），用于空间占用统计。
+\end{itemize}
+
+\subsection{提交记录表（submission）}
+
+\begin{lstlisting}[language=SQL,caption={submission 建表语句}]
+CREATE TABLE IF NOT EXISTS submission (
+    id BIGSERIAL PRIMARY KEY,
+    thesis_id BIGINT NOT NULL REFERENCES thesis(id) ON DELETE CASCADE,
+    student_id BIGINT NOT NULL REFERENCES sys_user(id),
+    version_number INT NOT NULL DEFAULT 1,
+    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+每次学生提交论文时新增一条记录，\verb|version_number|递增，保留完整的提交历史。
+
+\subsection{批注表（annotation）}
+
+批注表记录教师在论文指定文字位置添加的修改建议。
+
+\begin{lstlisting}[language=SQL,caption={annotation 建表语句}]
+CREATE TABLE IF NOT EXISTS annotation (
+    id BIGSERIAL PRIMARY KEY,
+    thesis_id BIGINT NOT NULL REFERENCES thesis(id) ON DELETE CASCADE,
+    section_id BIGINT NOT NULL REFERENCES thesis_section(id),
+    teacher_id BIGINT NOT NULL REFERENCES sys_user(id),
+    start_offset INT NOT NULL,
+    text_length INT NOT NULL,
+    selected_text TEXT,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+\begin{itemize}
+    \item \verb|start\_offset|：选中文字在原HTML内容中的起始字符位置（0-based），用于精确定位批注锚点；
+    \item \verb|text\_length|：选中文字的长度，结合start\_offset确定完整范围；
+    \item \verb|selected\_text|：被选中的原文内容（冗余存储，便于离线查看批注含义）；
+    \item \verb|content|：教师的批注意见文本。
+\end{itemize}
+
+\subsection{批阅记录表（review\_record）}
+
+\begin{lstlisting}[language=SQL,caption={review\_record 建表语句}]
+CREATE TABLE IF NOT EXISTS review_record (
+    id BIGSERIAL PRIMARY KEY,
+    thesis_id BIGINT NOT NULL REFERENCES thesis(id) ON DELETE CASCADE,
+    teacher_id BIGINT NOT NULL REFERENCES sys_user(id),
+    comment_html TEXT,
+    score INT CHECK (score >= 0 AND score <= 100),
+    grade VARCHAR(10),
+    action VARCHAR(20) NOT NULL CHECK (action IN ('REVIEWED', 'RETURNED')),
+    return_reason TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+分数（\verb|score|）与等级（\verb|grade|）的换算规则为：$\geq$90分→优、80-89→良、70-79→中、60-69→及格、<60→不及格。\verb|action|区分批阅（REVIEWED）和退回（RETURNED）两种操作类型。
+
+\subsection{章节草稿历史表（thesis\_section\_draft\_history）}
+
+\begin{lstlisting}[language=SQL,caption={thesis\_section\_draft\_history 建表语句}]
+CREATE TABLE IF NOT EXISTS thesis_section_draft_history (
+    id BIGSERIAL PRIMARY KEY,
+    section_id BIGINT NOT NULL REFERENCES thesis_section(id) ON DELETE CASCADE,
+    draft_content TEXT,
+    saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+草稿历史表用于记录每次自动保存的快照，支持学生回溯到先前的草稿版本。
+
+\subsection{索引设计}
+
+在概要设计中已介绍索引策略，以下给出索引的完整DDL语句：
+
+\begin{lstlisting}[language=SQL,caption={索引创建语句}]
+CREATE INDEX IF NOT EXISTS idx_user_role ON sys_user(role);
+CREATE INDEX IF NOT EXISTS idx_template_college ON template(college_id);
+CREATE INDEX IF NOT EXISTS idx_template_type ON template(type);
+CREATE INDEX IF NOT EXISTS idx_thesis_student ON thesis(student_id);
+CREATE INDEX IF NOT EXISTS idx_thesis_status ON thesis(status);
+CREATE INDEX IF NOT EXISTS idx_section_thesis ON thesis_section(thesis_id);
+CREATE INDEX IF NOT EXISTS idx_annotation_thesis ON annotation(thesis_id);
+CREATE INDEX IF NOT EXISTS idx_review_thesis ON review_record(thesis_id);
+\end{lstlisting}
+
+全部索引均采用B-tree默认结构。由于当前数据规模为实训项目级别（预计千级用户、万级论文记录），B-tree索引足以满足所有查询场景的性能需求。若未来数据量增长至百万级，可针对JSONB字段（template\_version的配置数据）添加GIN索引以支持配置内容的高效检索。
+
+\subsection{数据库初始化策略}
+
+系统启动时通过Spring Boot的SQL初始化机制自动执行schema.sql脚本。在\verb|application.properties|中配置如下：
+
+\begin{lstlisting}[language=Java,caption={SQL初始化配置}]
+spring.sql.init.mode=always
+spring.sql.init.schema-locations=classpath:schema.sql
+spring.jpa.hibernate.ddl-auto=validate
+\end{lstlisting}
+
+\verb|ddl-auto=validate|确保JPA实体定义与实际数据库表结构保持一致，若存在字段差异则启动报错，防止运行时出现隐式的数据不一致问题。
+
+\section{认证与权限模块详细设计}
+
+\subsection{模块概述}
+
+认证与权限模块（M1）负责系统中全部用户的身份认证和操作授权。模块采用JWT（JSON Web Token）无状态认证机制配合Redis缓存的自研轻量级方案，未引入Spring Security全套框架，以降低学习曲线和项目复杂度，同时满足实训项目的安全需求。
+
+模块核心职责包括：
+\begin{enumerate}
+    \item \textbf{用户认证}：处理注册（创建账号）、登录（签发Token）、登出（销毁Token）三项基本认证操作；
+    \item \textbf{Token管理}：JWT Token的生成、解析、过期校验，以及Redis中的缓存存储；
+    \item \textbf{请求拦截}：在API请求处理管道中拦截所有非公开请求，校验Token有效性并提取用户身份信息；
+    \item \textbf{角色鉴权}：根据API接口声明的所需角色，校验当前请求用户的角色是否在允许列表中。
+\end{enumerate}
+
+\subsection{认证流程设计}
+
+\subsubsection{用户注册流程}
+
+用户注册的完整处理流程如下：
+
+\begin{enumerate}
+    \item 前端收集用户名、密码、真实姓名、角色（STUDENT或TEACHER）、所属学院ID，通过POST请求发送至\verb|/api/v1/auth/register|；
+    \item 请求体经@Valid注解触发JSR-303校验（用户名4-50位、密码6-100位、必填字段非空）；
+    \item AuthController.register()接收RegisterRequest DTO，调用AuthService.register()；
+    \item AuthService检查用户名是否已存在（userRepository.existsByUsername），如已存在则抛出BusinessException(400, "用户名已存在")；
+    \item 校验通过后，构造User实体对象：使用BCryptPasswordEncoder.encode()对明文密码进行哈希加密，设置enabled=true，调用userRepository.save()持久化；
+    \item 为新用户生成JWT Token（jwtUtil.generateToken），Token中包含userId、username、role三个Claim；
+    \item 将Token写入Redis缓存（key格式：\verb|token:<userId>|），设置24小时过期，与JWT过期时间一致；
+    \item 返回LoginResponse（token、userId、username、realName、role）。
+\end{enumerate}
+
+\subsubsection{用户登录流程}
+
+登录流程与注册类似但更简化：
+
+\begin{enumerate}
+    \item 前端发送POST请求至\verb|/api/v1/auth/login|，携带LoginRequest（username + password）；
+    \item AuthService根据用户名查询用户（userRepository.findByUsername），找不到则抛出BusinessException(401)；
+    \item 检查enabled状态，若为false则抛出BusinessException(403, "账号已被禁用")；
+    \item 使用BCryptPasswordEncoder.matches()方法比对明文密码与数据库中的密文；
+    \item 认证通过后生成JWT Token并写入Redis，返回LoginResponse。
+\end{enumerate}
+
+\subsubsection{用户登出流程}
+
+\begin{enumerate}
+    \item 前端发送POST请求至\verb|/api/v1/auth/logout|（需携带Token）；
+    \item AuthController从Request Attribute中提取userId（由JwtFilter预先注入）；
+    \item AuthService删除Redis中对应的Token缓存；
+    \item Token本身仍在其有效期内，但由于后端不再认可该Token（后续请求在Redis中找不到对应记录），实现了逻辑登出。
+\end{enumerate}
+
+\subsection{JWT Token设计}
+
+\subsubsection{Token格式与内容}
+
+系统采用JJWT库（io.jsonwebtoken 0.12.6）实现JWT Token的签发和解析。Token结构为标准的三段式JWT格式：\verb|Header.Payload.Signature|。
+
+Payload（Claims）包含以下字段：
+
+\begin{table}[htbp]
+    \centering
+    \caption{JWT Token Payload字段定义}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{字段名} & \textbf{类型} & \textbf{说明} \\
+        \hline
+        userId & Long & 用户ID，主键值 \\
+        \hline
+        username & String & 登录用户名 \\
+        \hline
+        role & String & 角色标识（ADMIN/STUDENT/TEACHER） \\
+        \hline
+        iat & Date & 签发时间（Issued At） \\
+        \hline
+        exp & Date & 过期时间（Expiration），iat + 24小时 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{Token签名算法}
+
+Token签名采用HMAC-SHA256对称密钥算法，密钥通过\verb|application.properties|中的\verb|jwt.secret|配置项注入。密钥长度建议不少于256位（32字节），以确保足够的签名强度。当前开发环境的密钥为占位符，生产部署前须替换为随机生成的强密钥。
+
+\begin{lstlisting}[language=Java,caption={JwtUtil.generateToken() 核心逻辑}]
+public String generateToken(Long userId, String username, String role) {
+    Map<String, Object> claims = new HashMap<>();
+    claims.put("userId", userId);
+    claims.put("username", username);
+    claims.put("role", role);
+
+    return Jwts.builder()
+            .claims(claims)
+            .issuedAt(new Date())
+            .expiration(new Date(System.currentTimeMillis() + expiration))
+            .signWith(getKey())   // HMAC-SHA256签名
+            .compact();
+}
+\end{lstlisting}
+
+\subsubsection{Token解析与校验}
+
+Token解析时，JJWT库自动校验签名和过期时间。若签名不匹配、Token已过期或格式错误，JwtUtil.parseToken()抛出相应异常，由JwtFilter捕获并统一处理（认证失败时不阻塞请求，仅不注入用户信息，由后续RoleInterceptor按需拒绝）。
+
+\begin{lstlisting}[language=Java,caption={JwtUtil.parseToken() 核心逻辑}]
+public Claims parseToken(String token) {
+    return Jwts.parser()
+            .verifyWith(getKey())
+            .build()
+            .parseSignedClaims(token)
+            .getPayload();
+}
+\end{lstlisting}
+
+\subsection{请求认证过滤器（JwtFilter）}
+
+JwtFilter是认证机制的核心组件，继承自Spring Web的OncePerRequestFilter抽象类，确保每次请求仅执行一次过滤逻辑。
+
+\begin{lstlisting}[language=Java,caption={JwtFilter.doFilterInternal() 核心逻辑}]
+@Override
+protected void doFilterInternal(HttpServletRequest request,
+        HttpServletResponse response, FilterChain chain)
+        throws ServletException, IOException {
+
+    String path = request.getRequestURI();
+
+    // 放行公开端点
+    if (path.startsWith("/api/v1/auth/") ||
+            path.contains("/doc.html") ||
+            path.contains("/v3/api-docs") ||
+            path.contains("/swagger") ||
+            path.contains("/webjars")) {
+        chain.doFilter(request, response);
+        return;
+    }
+
+    // 解析Token并注入用户信息
+    String header = request.getHeader("Authorization");
+    if (header != null && header.startsWith("Bearer ")) {
+        String token = header.substring(7);
+        try {
+            if (!jwtUtil.isTokenExpired(token)) {
+                Claims claims = jwtUtil.parseToken(token);
+                request.setAttribute("userId",
+                    claims.get("userId", Long.class));
+                request.setAttribute("username",
+                    claims.get("username", String.class));
+                request.setAttribute("role",
+                    claims.get("role", String.class));
+            }
+        } catch (Exception ignored) {
+            // Token无效时不注入属性，后续鉴权拦截器按需拒绝
+        }
+    }
+
+    chain.doFilter(request, response);
+}
+\end{lstlisting}
+
+关键设计决策说明：
+\begin{itemize}
+    \item \textbf{不阻断未认证请求}：Filter不在缺少Token或Token无效时直接返回401，而是将请求继续传递给后续拦截器。这样设计的好处是：若后续Controller方法未标注@RoleRequired，则允许未登录用户访问（为未来可能的公开接口预留灵活性）；
+    \item \textbf{白名单路径}：注册、登录、API文档（Swagger/Knife4j）相关路径被明确排除在认证拦截之外；
+    \item \textbf{无状态设计}：Filter不查询数据库，仅依赖JWT Token自包含的用户信息完成身份识别，减轻数据库压力。
+\end{itemize}
+
+\subsection{角色权限拦截器（RoleInterceptor）}
+
+RoleInterceptor实现Spring MVC的HandlerInterceptor接口，在Controller方法执行前校验用户角色。
+
+\begin{lstlisting}[language=Java,caption={RoleInterceptor.preHandle() 核心逻辑}]
+@Override
+public boolean preHandle(HttpServletRequest request,
+        HttpServletResponse response, Object handler) {
+
+    if (!(handler instanceof HandlerMethod hm)) {
+        return true;
+    }
+
+    // 获取方法上的 @RoleRequired 注解
+    RoleRequired annotation = hm.getMethodAnnotation(RoleRequired.class);
+    if (annotation == null) {
+        annotation = hm.getBeanType().getAnnotation(RoleRequired.class);
+    }
+    if (annotation == null) {
+        return true;  // 无注解则放行
+    }
+
+    String role = (String) request.getAttribute("role");
+    if (role == null) {
+        throw new BusinessException(401, "请先登录");
+    }
+
+    List<String> allowed = Arrays.asList(annotation.value());
+    if (!allowed.contains(role)) {
+        throw new BusinessException(403,
+            "权限不足，需要角色: " + String.join(", ", allowed));
+    }
+
+    return true;
+}
+\end{lstlisting}
+
+拦截器的工作流程如下：
+\begin{enumerate}
+    \item 判断当前handler是否为Controller方法（HandlerMethod），非方法类型（如静态资源请求）直接放行；
+    \item 优先从方法上获取@RoleRequired注解，若不存在则从Controller类上获取，两级均无则放行（无权限要求）；
+    \item 从Request Attribute中取出role值（由JwtFilter预先注入），若为null则用户未登录，抛出BusinessException(401)；
+    \item 校验当前用户角色是否在@RoleRequired声明的允许角色列表中，不在则抛出BusinessException(403)；
+    \item 校验通过后返回true，请求继续进入Controller方法处理。
+\end{enumerate}
+
+\subsection{@RoleRequired 注解}
+
+自定义注解@RoleRequired用于在Controller类或方法级别声明接口所需的角色权限。
+
+\begin{lstlisting}[language=Java,caption={@RoleRequired 注解定义}]
+@Target({ElementType.METHOD, ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface RoleRequired {
+    String[] value() default {};
+}
+\end{lstlisting}
+
+典型使用方式：
+
+\begin{itemize}
+    \item \textbf{类级别声明}：在Controller类上标注@RoleRequired，该类下所有方法均需指定角色才能访问。例如管理员Controller标注\verb|@RoleRequired("ADMIN")|；
+    \item \textbf{方法级别声明}：在特定方法上标注，覆盖类级别设置。例如在学生Controller中，大部分方法需要STUDENT角色，但某个查询接口允许TEACHER查看，则在方法上标注\verb|@RoleRequired({"STUDENT", "TEACHER"})|。
+\end{itemize}
+
+\subsection{拦截器注册配置（WebConfig）}
+
+WebConfig实现WebMvcConfigurer接口，将RoleInterceptor注册到Spring MVC拦截器链中。
+
+\begin{lstlisting}[language=Java,caption={WebConfig 拦截器注册}]
+@Configuration
+@RequiredArgsConstructor
+public class WebConfig implements WebMvcConfigurer {
+
+    private final RoleInterceptor roleInterceptor;
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(roleInterceptor)
+                .addPathPatterns("/api/**")
+                .excludePathPatterns(
+                    "/api/v1/auth/**",   // 认证接口公开
+                    "/doc.html",          // Knife4j文档页
+                    "/v3/api-docs/**",    // OpenAPI JSON
+                    "/swagger/**",        // Swagger静态资源
+                    "/webjars/**"         // Webjars资源
+                );
+    }
+}
+\end{lstlisting}
+
+关键配置说明：
+\begin{itemize}
+    \item \verb|addPathPatterns("/api/**")|：拦截所有API请求；
+    \item \verb|excludePathPatterns(...)|：排除认证接口和API文档相关路径，这些路径在JwtFilter中同样被放行，形成双重保障。
+\end{itemize}
+
+\subsection{密码加密方案}
+
+系统采用BCrypt单向哈希算法存储用户密码。BCrypt是专门为密码哈希设计的算法，具有以下优势：
+
+\begin{itemize}
+    \item \textbf{内置盐值}：每次加密自动生成随机盐值并嵌入哈希结果中（格式：\verb|$2a$10$<22位盐值><31位哈希值>|），相同密码每次加密结果不同，有效防御彩虹表攻击；
+    \item \textbf{计算代价可调}：work factor参数（示例为10）表示$2^{10}$轮哈希迭代，可根据硬件性能调整。当前默认值10在保证安全性的同时，单次加密耗时约100ms，对登录体验影响可忽略；
+    \item \textbf{不可逆}：BCrypt是单向哈希，无法从密文反推明文密码。
+\end{itemize}
+
+AuthService中直接创建BCryptPasswordEncoder实例：
+
+\begin{lstlisting}[language=Java]
+private final BCryptPasswordEncoder passwordEncoder =
+    new BCryptPasswordEncoder();
+\end{lstlisting}
+
+注册时调用\verb|passwordEncoder.encode(rawPassword)|生成密文存储；登录时调用\verb|passwordEncoder.matches(rawPassword, encodedPassword)|比对密码。
+
+\subsection{Redis Token缓存策略}
+
+Token在签发的同时写入Redis缓存，key设计为\verb|"token:" + userId|，value为Token字符串本身。设置过期时间为24小时，与JWT Token的过期时间保持一致。
+
+Redis Token缓存的作用：
+\begin{itemize}
+    \item \textbf{登出管理}：前端登出时，后端删除Redis中的Token记录，使得该Token不再被认可（即便JWT本身未过期）；
+    \item \textbf{单点登录控制}：可选扩展——同一userId的Token写入Redis时覆盖旧值，天然实现了同一账号后续登录踢掉前一次登录的效果；
+    \item \textbf{状态查询}：管理员可通过Redis中是否存在某用户的Token来判断其在线状态。
+\end{itemize}
+
+RedisTemplate的序列化配置（RedisConfig）采用String序列化key、GenericJackson2JsonRedisSerializer序列化value，支持对象数据的JSON序列化存储，同时保持Redis客户端中的key可读性。
+
+\subsection{统一返回体设计}
+
+所有API响应均通过Result<T>泛型类统一封装，结构如下：
+
+\begin{lstlisting}[language=Java,caption={Result.java 统一返回体}]
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Result<T> {
+    private int code;      // 业务状态码
+    private String message; // 提示信息
+    private T data;        // 响应数据（泛型）
+
+    public static <T> Result<T> ok(T data) {
+        return new Result<>(200, "success", data);
+    }
+
+    public static <T> Result<T> error(int code, String message) {
+        return new Result<>(code, message, null);
+    }
+}
+\end{lstlisting}
+
+状态码约定：
+\begin{itemize}
+    \item 200：请求成功；
+    \item 400：参数校验失败；
+    \item 401：未登录或Token无效；
+    \item 403：角色权限不足；
+    \item 500：服务端内部错误。
+\end{itemize}
+
+\subsection{全局异常处理}
+
+GlobalExceptionHandler通过@RestControllerAdvice注解拦截Controller层抛出的异常，转换为统一返回体格式：
+
+\begin{itemize}
+    \item \textbf{BusinessException}：业务异常，提取异常中的code和message构造Result返回；
+    \item \textbf{MethodArgumentNotValidException}：JSR-303参数校验异常，汇总所有字段级别的错误信息，以分号分隔返回；
+    \item \textbf{Exception}：兜底异常处理，记录完整堆栈日志，向前端返回500错误。
+\end{itemize}
+
+该机制确保所有异常（包括认证鉴权模块抛出的BusinessException）都能以统一的JSON格式返回前端，前端只需关注Result中的code和message字段即可完成统一的错误处理逻辑。
+
+\subsection{安全防护措施}
+
+认证权限模块在设计中考虑了以下安全防护点：
+
+\begin{enumerate}
+    \item \textbf{密码不落盘}：密码仅以BCrypt密文形式存储在数据库中，日志中不打印密码参数（AuthService中密码字段仅参与比对，不输出日志）；
+    \item \textbf{Token时效性}：JWT Token有效期24小时，过期后必须重新登录，降低Token泄露后的安全风险窗口；
+    \item \textbf{接口级权限控制}：每个需要权限的API接口通过@RoleRequired明确声明角色要求，防止水平越权（学生调用教师接口）和垂直越权（普通用户调用管理员接口）；
+    \item \textbf{注册角色限制}：AuthService.register()方法中硬编码禁止注册ADMIN角色，管理员账号仅由DBA在数据库层面手动创建，防止恶意注册管理员；
+    \item \textbf{账号禁用机制}：enabled字段支持管理员禁用违规或异常账号，禁用账号在登录时被明确拒绝（返回403禁用提示，而非模糊的401认证失败）。
+\end{enumerate}
+
+\subsection{认证鉴权全链路时序}
+
+用户从登录到访问受保护API的完整认证鉴权链路如下：
+
+\begin{enumerate}
+    \item 用户通过\verb|POST /api/v1/auth/login|提交用户名和密码；
+    \item AuthService验证用户名密码，通过后生成JWT Token，写入Redis，返回LoginResponse（包含Token）；
+    \item 前端将Token存储在localStorage中，并设置Axios请求拦截器——每次HTTP请求自动在header中注入\verb|Authorization: Bearer <token>|；
+    \item 用户访问受保护的API（如\verb|GET /api/v1/thesis/list|）：
+    \begin{enumerate}
+        \item[(a)] JwtFilter从header提取Token，校验签名和过期时间，将userId/username/role注入Request Attribute；
+        \item[(b)] RoleInterceptor检查目标Controller方法上的@RoleRequired注解，校验当前用户角色是否在允许列表中；
+        \item[(c)] 鉴权通过后，Controller方法通过request.getAttribute("userId")获取当前操作用户ID，确保数据隔离（学生只能操作自己的论文，教师只能查看自己学院的论文等）。
+    \end{enumerate}
+    \item 用户登出时调用\verb|POST /api/v1/auth/logout|，服务端删除Redis中的Token记录，前端清空localStorage中的Token。
+\end{enumerate}
+
+该链路的设计确保了从认证到鉴权的完整闭环，每个环节都有明确的职责边界和异常处理策略，构成了系统安全体系的基石。
+% 过渡：数据库与认证 → 模板论文详细设计
+% ============================================================
+% 2_B_template_thesis.tex --- 模板模块 + 论文模块 详细设计
+% 编写人：B  日期：2026-07-15
+% 职责：实体DDL / API规范 / 业务流程 / 核心算法
+% ============================================================
+
+\section{College 实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{sys\_college 表结构}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id        & BIGINT  & PK, AUTO\_INCREMENT & —      & 主键 \\
+name      & VARCHAR(100) & NOT NULL        & —      & 学院名称 \\
+code      & VARCHAR(50)  & NOT NULL, UNIQUE & —      & 学院代码，全局唯一 \\
+created\_at & DATETIME & —              & NOW()  & 创建时间 \\
+updated\_at & DATETIME & —              & NOW()  & 更新时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{业务规则}
+
+\begin{enumerate}
+    \item 学院代码（code）创建后不可修改，确保系统内部标识的稳定性。
+    \item 新增学院时校验 code 唯一性：若已存在相同 code 返回 409 Conflict。
+    \item 删除学院前执行关联检查：查询 template 表 WHERE college\_id = ? AND enabled = TRUE；查询 thesis 表 WHERE college\_id = ? AND status != 'COMPLETED'。任意检查返回记录数 > 0 则返回错误并阻止删除。
+    \item 学院列表接口不分页（数据量有限），按 name 字段升序返回全部记录。
+\end{enumerate}
+
+\section{Template 实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{template 表结构}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id         & BIGINT  & PK, AUTO\_INCREMENT & —      & 主键 \\
+name       & VARCHAR(200) & NOT NULL        & —      & 模板名称 \\
+type       & VARCHAR(20)  & NOT NULL        & —      & 模板类型枚举 \\
+college\_id & BIGINT  & FK → sys\_college.id, NULLABLE & NULL & 适用学院，NULL 表示通用 \\
+enabled    & BOOLEAN & NOT NULL         & TRUE   & 启用状态 \\
+created\_at & DATETIME & —              & NOW()  & 创建时间 \\
+updated\_at & DATETIME & —              & NOW()  & 更新时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{模板类型枚举定义}
+
+\begin{table}[htbp]
+\centering
+\caption{Template.type 枚举值}
+\begin{tabular}{llp{7cm}}
+\toprule
+\textbf{枚举值} & \textbf{中文名称} & \textbf{模板特征} \\
+\midrule
+GRADUATION & 毕业设计论文 & 含封面、中英文摘要、目录、多章正文、致谢、参考文献 \\
+COURSE     & 课程论文     & 结构简化，不含中英文摘要和致谢，一般为单章结构 \\
+PROJECT    & 项目报告     & 含项目背景、需求分析、设计方案、实现过程、测试结论 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{业务规则}
+
+\begin{enumerate}
+    \item 创建模板时，college\_id 可为 NULL（通用模板）或指定学院 ID。
+    \item 模板列表查询支持 type 和 college\_id 可选筛选参数，按 updated\_at 降序排列。
+    \item 启用/禁用：enabled 设为 false 时，新论文不可选用该模板，但已使用该模板的论文不受影响。
+    \item 删除模板前检查 thesis 表 WHERE template\_version\_id IN (SELECT id FROM template\_version WHERE template\_id = ?) AND status IN ('DRAFT','SUBMITTED','REVIEWED','RETURNED','GENERATING')，存在记录则阻止删除。
+\end{enumerate}
+
+\section{TemplateVersion 实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{template\_version 表结构}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id              & BIGINT   & PK, AUTO\_INCREMENT & —      & 主键 \\
+template\_id     & BIGINT   & FK → template.id, NOT NULL & — & 所属模板 \\
+version\_number  & VARCHAR(20) & NOT NULL       & '1.0'  & 版本号字符串 \\
+is\_current      & BOOLEAN  & NOT NULL         & TRUE   & 是否当前生效版本 \\
+cover\_fields    & TEXT     & —                & '[]'   & 封面字段配置（JSON Array）\\
+chapter\_structure & TEXT   & —                & '[]'   & 章节结构配置（JSON Array）\\
+format\_config   & TEXT     & —                & '\{\}' & 排版格式配置（JSON Object）\\
+created\_at      & DATETIME & —                & NOW()  & 创建时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{版本号递增算法}
+
+版本号格式为 MAJOR.MINOR（如 1.0、2.3）。
+
+\begin{lstlisting}[language=Java]
+public String incrementVersion(String currentVersion) {
+    String[] parts = currentVersion.split("\\.");
+    int major = Integer.parseInt(parts[0]);
+    int minor = Integer.parseInt(parts[1]);
+    if (minor < 9) {
+        return major + "." + (minor + 1);  // 1.0 -> 1.1
+    } else {
+        return (major + 1) + ".0";          // 1.9 -> 2.0
+    }
+}
+\end{lstlisting}
+
+\subsection{版本管理核心流程}
+
+\begin{enumerate}
+    \item \textbf{创建模板}：创建 Template 记录的同时，自动创建首条 TemplateVersion 记录（version\_number="1.0"，is\_current=true，三个 JSON 字段初始化为空数组/空对象）。
+    \item \textbf{编辑并保存配置}：管理员修改 JSON 配置后点击保存，系统执行：①将当前 is\_current 版本置为 false；②调用 incrementVersion() 计算新版本号；③创建新 TemplateVersion 记录，is\_current=true。
+    \item \textbf{版本回滚}：管理员选择历史版本点击"激活"，系统执行：UPDATE template\_version SET is\_current = false WHERE template\_id = ? AND is\_current = true；UPDATE template\_version SET is\_current = true WHERE id = ?。回滚不影响已绑定该模板历史版本的论文。
+    \item \textbf{差异对比}：前端请求两个版本 id，后端返回两个版本的三个 JSON 字段。前端使用 JSON diff 算法逐字段对比，以绿色标记新增、红色标记删除、灰色标记未变更。
+\end{enumerate}
+
+\section{Thesis 实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{thesis 表结构}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id                  & BIGINT   & PK, AUTO\_INCREMENT & —      & 主键 \\
+student\_id          & BIGINT   & FK → user.id, NOT NULL & —  & 所属学生 \\
+template\_version\_id & BIGINT   & FK → template\_version.id & — & 使用的模板版本快照 \\
+title               & VARCHAR(500) & NOT NULL      & '未命名论文' & 论文标题 \\
+status              & VARCHAR(20)  & NOT NULL      & 'DRAFT' & 论文状态 \\
+is\_locked           & BOOLEAN  & NOT NULL         & FALSE  & 是否锁定 \\
+college\_id          & BIGINT   & FK → sys\_college.id & —   & 所属学院 \\
+created\_at          & DATETIME & —                & NOW()  & 创建时间 \\
+updated\_at          & DATETIME & —                & NOW()  & 更新时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{论文状态转换详细规则}
+
+\begin{table}[htbp]
+\centering
+\caption{论文状态转换详细规则}
+\begin{tabular}{lllp{5cm}}
+\toprule
+\textbf{当前状态} & \textbf{目标状态} & \textbf{前置条件} & \textbf{后置动作} \\
+\midrule
+DRAFT & SUBMITTED & 所有章节 content 非空 & is\_locked = true; 记录提交时间 \\
+DRAFT & GENERATING & 所有章节 content 非空 & is\_locked = true; 提交异步导出任务 \\
+SUBMITTED & REVIEWED & 教师完成批注 & 通知学生 \\
+SUBMITTED & RETURNED & 教师退回 & is\_locked = false; 通知学生修改 \\
+RETURNED & DRAFT & 学生进入编辑页 & 自动切换（无额外操作）\\
+GENERATING & COMPLETED & 导出任务成功 & 记录导出文件路径; 通知学生下载 \\
+GENERATING & DRAFT & 导出任务失败 & is\_locked = false; 通知学生失败原因 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{论文创建流程}
+
+\begin{enumerate}
+    \item 学生 POST /api/theses，请求体包含 title、templateVersionId、collegeId。
+    \item 后端校验：title 非空，templateVersionId 对应版本存在，collegeId 对应学院存在。
+    \item 创建 Thesis 记录（status=DRAFT）。
+    \item 查询 TemplateVersion 的 chapter\_structure JSON，递归遍历：
+    \begin{enumerate}
+        \item 对每个 type 不是 "auto" 的节点，创建 ThesisSection 记录（thesis\_id=新论文id, section\_key=节点的key, title=节点的title, section\_type=节点的type, parent\_id=父章节id, sort\_order=遍历顺序）。
+        \item type 为 "auto" 的节点（如目录）不创建 ThesisSection 记录。
+    \end{enumerate}
+    \item 返回创建成功的 Thesis 对象。
+\end{enumerate}
+
+\section{ThesisSection 实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{thesis\_section 表结构}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id            & BIGINT   & PK, AUTO\_INCREMENT & —      & 主键 \\
+thesis\_id     & BIGINT   & FK → thesis.id, NOT NULL & —  & 所属论文 \\
+title         & VARCHAR(300) & NOT NULL       & —      & 章节标题 \\
+section\_key   & VARCHAR(100) & NOT NULL       & —      & 对应模板 chapterStructure 的 key \\
+content       & TEXT     & —                & ''     & 正式内容（富文本 HTML）\\
+draft\_content & TEXT     & —                & ''     & 草稿内容（自动保存）\\
+section\_type  & VARCHAR(50)  & —             & 'chapter' & 章节类型 \\
+parent\_id     & BIGINT   & —                & NULL   & 父章节 ID（自引用外键，NULL 为根节点）\\
+sort\_order    & INT      & —                & 0      & 同层级排序序号 \\
+created\_at    & DATETIME & —                & NOW()  & 创建时间 \\
+updated\_at    & DATETIME & —                & NOW()  & 更新时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{自动保存策略}
+
+\begin{itemize}
+    \item 前端编辑器每 30 秒触发 POST /api/sections/\{id\}/auto-save，请求体中仅包含 \{ "draftContent": "..." \}。
+    \item 后端仅更新 draft\_content 字段，不影响 content 字段，不触发论文 updated\_at 更新。
+    \item 学生手动点击"保存"时，PUT /api/sections/\{id\}，请求体 \{ "content": "..." \}，将正式内容写入 content 字段并更新论文 updated\_at。
+    \item 前端加载章节内容时优先级：draft\_content 非空时展示 draft\_content（提示"恢复未保存内容"），否则展示 content。
+\end{itemize}
+
+\subsection{章节树查询实现}
+
+获取论文全部章节树的 SQL 查询：
+
+\begin{lstlisting}[language=Java]
+// Repository 层
+@Query("SELECT s FROM ThesisSection s WHERE s.thesisId = :thesisId ORDER BY s.sortOrder ASC")
+List<ThesisSection> findAllByThesisId(@Param("thesisId") Long thesisId);
+
+// Service 层 —— 构建树形结构
+public List<SectionTreeNode> buildTree(Long thesisId) {
+    List<ThesisSection> all = repository.findAllByThesisId(thesisId);
+    Map<Long, List<ThesisSection>> parentMap = all.stream()
+        .filter(s -> s.getParentId() != null)
+        .collect(Collectors.groupingBy(ThesisSection::getParentId));
+    return all.stream()
+        .filter(s -> s.getParentId() == null)  // 根节点
+        .map(root -> buildNode(root, parentMap))
+        .collect(Collectors.toList());
+}
+
+private SectionTreeNode buildNode(ThesisSection section,
+        Map<Long, List<ThesisSection>> parentMap) {
+    SectionTreeNode node = new SectionTreeNode(section);
+    List<ThesisSection> children = parentMap.getOrDefault(section.getId(), List.of());
+    node.setChildren(children.stream()
+        .map(child -> buildNode(child, parentMap))
+        .collect(Collectors.toList()));
+    return node;
+}
+\end{lstlisting}
+
+\section{核心业务流程图}
+
+\subsection{流程一：管理员创建并发布模板}
+
+\begin{enumerate}
+    \item 管理员 POST /api/templates，创建模板 → Template + TemplateVersion(V1.0) 入库。
+    \item 管理员进入版本编辑页，配置 coverFields（拖拽封面元素）、chapterStructure（增删章节节点）、formatConfig（设置字体页边距）。
+    \item 管理员点击"预览"：系统调用预览服务，用示例数据 + 当前 JSON 配置渲染 PDF → 浏览器新标签页展示。
+    \item 管理员确认无误，点击"保存并发布"：系统递增版本号，创建新 TemplateVersion 记录 → 学生端模板列表立即可见。
+\end{enumerate}
+
+\subsection{流程二：学生创建论文并撰写}
+
+\begin{enumerate}
+    \item 学生 POST /api/theses → 系统创建 Thesis(DRAFT) + 按模板 chapterStructure 批量创建 ThesisSection 记录。
+    \item 前端加载编辑器：左侧渲染章节树（GET /api/theses/\{id\}/sections），右侧渲染富文本编辑器。
+    \item 学生切换章节 → 前端 GET 对应 section 的 content/draftContent → 加载到编辑器。
+    \item 学生编辑内容 → 每 30 秒 auto-save draftContent → 手动保存时写 content。
+    \item 全部章节完成后，学生点击"提交" → 校验所有 content 非空 → status 变为 SUBMITTED → is\_locked=true。
+\end{enumerate}
+
+\subsection{流程三：模板版本升级不影响已有论文}
+
+\begin{enumerate}
+    \item 管理员修改模板 JSON 配置并保存 → 版本号递增（V1.0→V1.1）。
+    \item 已有论文的 template\_version\_id 仍指向 TemplateVersion(id=3, V1.0)，不受影响。
+    \item 新论文创建时，系统默认查询当前生效版本（is\_current=true），即使用 V1.1。
+    \item 若学生希望使用旧版模板，前端模板选择器列出所有历史版本供手动选择。
+\end{enumerate}
+% 过渡：模板论文 → 参考文献/图片/导出算法
+% ============================================================
+% 3_C_export_algo.tex --- 参考文献模块 / 图片模块 / 导出模块 详细设计
+% 编写人：C  日期：2026-07-15
+% 职责：实体DDL / API规范 / 核心算法 / 业务流程
+% ============================================================
+
+\section{Reference 参考文献实体详细设计}
+
+\subsection{数据表结构}
+
+参考文献表采用独立表设计（tb\_reference前缀），不直接绑定论文ID，支持通用参考文献库管理功能。
+
+\begin{table}[htbp]
+\centering
+\caption{tb\_reference 表结构}
+\label{tab:tb_reference}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id          & BIGINT    & PK, AUTO\_INCREMENT & —      & 主键 \\
+authors     & VARCHAR(500) & NOT NULL        & —      & 作者（多作者逗号分隔）\\
+title       & VARCHAR(500) & NOT NULL        & —      & 文献标题 \\
+type        & VARCHAR(10)  & NOT NULL        & —      & 文献类型枚举（J/M/C/D/EB）\\
+year        & INT       & —                & —      & 出版年份 \\
+journal     & VARCHAR(500) & —                & —      & 刊物名称（期刊专用）\\
+volume      & VARCHAR(50)  & —                & —      & 卷号 \\
+issue       & VARCHAR(50)  & —                & —      & 期号 \\
+pages       & VARCHAR(50)  & —                & —      & 页码 \\
+publisher   & VARCHAR(500) & —                & —      & 出版社（书籍专用）\\
+address     & VARCHAR(500) & —                & —      & 出版地（书籍专用）\\
+conference  & VARCHAR(500) & —                & —      & 会议名称（会议专用）\\
+institution & VARCHAR(500) & —                & —      & 学位授予单位（学位论文专用）\\
+url         & VARCHAR(1000)& —                & —      & 访问链接（网络资源专用）\\
+access\_date & VARCHAR(100) & —                & —      & 引用日期（网络资源专用）\\
+created\_at  & TIMESTAMP  & —                & NOW()  & 创建时间 \\
+updated\_at  & TIMESTAMP  & —                & NOW()  & 更新时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{文献类型枚举定义}
+
+\begin{table}[htbp]
+\centering
+\caption{ReferenceType 枚举值}
+\label{tab:reftype}
+\begin{tabular}{llp{8cm}}
+\toprule
+\textbf{枚举值} & \textbf{中文名称} & \textbf{特有字段} \\
+\midrule
+J  & 期刊文章 & journal, volume, issue, pages \\
+M  & 专著/书籍 & publisher, address \\
+C  & 会议论文 & conference, pages \\
+D  & 学位论文 & institution \\
+EB & 网络资源 & url, access\_date \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{核心接口规范}
+
+参考文献模块提供RESTful CRUD接口，统一返回Result<T>格式：
+
+\begin{lstlisting}[language=Java,caption={ReferenceController 核心接口}]
+// 获取所有文献（按年份降序）
+GET    /api/references
+// Response: Result<List<Reference>>
+
+// 获取单条文献
+GET    /api/references/{id}
+// Response: Result<Reference> / 404
+
+// 新增文献
+POST   /api/references
+// RequestBody: Reference JSON
+// Response: Result<Reference> (201)
+
+// 更新文献
+PUT    /api/references/{id}
+// RequestBody: Reference JSON
+// Response: Result<Reference> / 404
+
+// 删除文献（存在性预检）
+DELETE /api/references/{id}
+// Response: Result<Void> / 404
+
+// 搜索
+GET    /api/references/search/author?keyword=张三
+GET    /api/references/search/title?keyword=深度学习
+
+// 获取格式化文本
+GET    /api/references/{id}/format
+// Response: Result<{ formatted: "..." }>
+
+// 获取全部格式化列表
+GET    /api/references/format/all
+// Response: Result<List<String>>
+\end{lstlisting}
+
+\subsection{GB/T 7714 格式化算法详细设计}
+
+格式化器采用策略模式实现，核心方法根据文献类型自动路由到对应的格式化方法。
+
+\begin{lstlisting}[language=Java,caption={Gbt7714Formatter 核心算法}]
+@Component
+public class Gbt7714Formatter {
+
+    public String format(Reference ref) {
+        if (ref == null) return "";
+        return switch (ref.getType()) {
+            case J  -> formatJournal(ref);
+            case M  -> formatBook(ref);
+            case C  -> formatConference(ref);
+            case D  -> formatDissertation(ref);
+            case EB -> formatElectronic(ref);
+        };
+    }
+
+    // [J] 作者. 标题[J]. 刊物, 年份, 卷(期): 页码.
+    private String formatJournal(Reference ref) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(ref.getAuthors()).append(". ");
+        sb.append(ref.getTitle()).append("[J]. ");
+        sb.append(nullToEmpty(ref.getJournal())).append(", ");
+        sb.append(ref.getYear());
+        // 卷、期、页码...
+        sb.append(".");
+        return sb.toString();
+    }
+
+    // [M] 作者. 标题[M]. 出版地: 出版社, 年份.
+    private String formatBook(Reference ref) { /* ... */ }
+
+    // [C] 作者. 标题[C]// 会议名称. 年份: 页码.
+    private String formatConference(Reference ref) { /* ... */ }
+
+    // [D] 作者. 标题[D]. 授予单位, 年份.
+    private String formatDissertation(Reference ref) { /* ... */ }
+
+    // [EB] 作者. 标题[EB/OL]. 链接, 引用日期.
+    private String formatElectronic(Reference ref) { /* ... */ }
+}
+\end{lstlisting}
+
+关键设计要点：
+\begin{enumerate}
+    \item 所有业务字段均做空值保护（null safe），避免字段为空时输出字面量"null"；
+    \item 各格式化方法独立封装，新增文献类型时仅需添加枚举值和对应私有方法，不修改现有代码（开闭原则）；
+    \item 格式化结果不含序号前缀，由调用方（导出模块）在生成列表时统一添加[1][2]序号。
+\end{enumerate}
+
+\section{Image 图片实体详细设计}
+
+\subsection{数据表结构}
+
+\begin{table}[htbp]
+\centering
+\caption{tb\_image 表结构}
+\label{tab:tb_image}
+\begin{tabular}{lllll}
+\toprule
+\textbf{字段名} & \textbf{类型} & \textbf{约束} & \textbf{默认值} & \textbf{说明} \\
+\midrule
+id            & BIGINT    & PK, AUTO\_INCREMENT & —      & 主键 \\
+original\_name & VARCHAR(500) & NOT NULL        & —      & 原始文件名（用户上传时的名字）\\
+stored\_name   & VARCHAR(500) & NOT NULL        & —      & 存储文件名（UUID生成）\\
+file\_path     & VARCHAR(1000)& NOT NULL        & —      & 文件在磁盘上的绝对路径 \\
+file\_size     & BIGINT    & —                & —      & 文件大小（字节）\\
+content\_type  & VARCHAR(100) & —                & —      & 文件MIME类型 \\
+created\_at    & TIMESTAMP & —                & NOW()  & 上传时间 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{图片上传核心流程}
+
+\begin{lstlisting}[language=Java,caption={ImageService.upload() 核心流程}]
+public Image upload(MultipartFile file) {
+    // 1. 校验文件非空
+    if (file.isEmpty()) throw new BusinessException(400, "上传文件不能为空");
+
+    // 2. 校验MIME类型（仅允许 jpg/png/gif/webp）
+    String contentType = file.getContentType();
+    if (contentType == null || !ALLOWED_TYPES.contains(contentType))
+        throw new BusinessException(400, "不支持的图片类型");
+
+    // 3. 校验文件大小（最大10MB）
+    if (file.getSize() > MAX_FILE_SIZE)
+        throw new BusinessException(400, "文件大小超出限制");
+
+    // 4. UUID重命名，防止重名
+    String extension = extractExtension(file.getOriginalFilename());
+    String storedName = UUID.randomUUID() + extension;
+    Path targetPath = uploadPath.resolve(storedName);
+
+    // 5. try-with-resources 写入磁盘
+    try (InputStream in = file.getInputStream()) {
+        Files.copy(in, targetPath, REPLACE_EXISTING);
+    }
+
+    // 6. 元信息入库
+    Image image = Image.builder()
+        .originalName(file.getOriginalFilename())
+        .storedName(storedName)
+        .filePath(targetPath.toString())
+        .fileSize(file.getSize())
+        .contentType(contentType)
+        .build();
+    return imageRepository.save(image);
+}
+\end{lstlisting}
+
+\subsection{上传接口规范}
+
+\begin{lstlisting}[language=Java,caption={ImageController 上传与访问接口}]
+// 上传图片
+POST /api/images/upload
+// Content-Type: multipart/form-data
+// Body: file (MultipartFile)
+// Response(201): {
+//   "code": 200,
+//   "data": {
+//     "id": 1,
+//     "originalName": "diagram.png",
+//     "fileSize": 204800,
+//     "contentType": "image/png",
+//     "url": "/api/images/1/file"
+//   }
+// }
+
+// 获取图片元信息
+GET /api/images/{id}
+
+// 获取图片文件（浏览器可直接查看）
+GET /api/images/{id}/file
+// Response: image/png 流（inline Content-Disposition）
+
+// 删除图片（删除磁盘文件+数据库记录）
+DELETE /api/images/{id}
+\end{lstlisting}
+
+\section{文档导出模块详细设计}
+
+\subsection{总体架构}
+
+文档导出模块分为三个核心步骤：
+\begin{enumerate}
+    \item \textbf{数据准备}：从数据库读取论文完整数据，包括章节HTML内容、参考文献格式化列表、图片文件路径、模板格式配置；
+    \item \textbf{DOCX生成}：使用Apache POI XWPF组件，按模板格式逐项构建Word文档；
+    \item \textbf{PDF转换}：调用LibreOffice命令行工具，以无头模式将DOCX转换为PDF。
+\end{enumerate}
+
+\subsection{Apache POI DOCX生成算法}
+
+DOCX生成的核心流程采用XWPFDocument对象逐段构建：
+
+\begin{lstlisting}[language=Java,caption={Apache POI DOCX生成核心逻辑}]
+public void generateDocx(Thesis thesis, List<ThesisSection> sections,
+                         List<String> formattedRefs,
+                         Map<String, Path> imageMap) throws Exception {
+
+    XWPFDocument document = new XWPFDocument();
+
+    // 1. 生成封面
+    addCover(document, thesis);
+
+    // 2. 遍历章节树，逐级生成标题和内容
+    for (ThesisSection section : buildTree(sections)) {
+        // 生成章节标题（按层级设置不同样式）
+        XWPFParagraph titlePara = document.createParagraph();
+        titlePara.setAlignment(ParagraphAlignment.LEFT);
+        XWPFRun titleRun = titlePara.createRun();
+        titleRun.setText(section.getTitle());
+        titleRun.setBold(true);
+        // 一级标题二号(22pt)，二级标题三号(16pt)，正文小四(12pt)
+
+        // 解析HTML内容，提取纯文本段落
+        String htmlContent = section.getContent();
+        List<String> paragraphs = parseHtmlParagraphs(htmlContent);
+
+        for (String paraText : paragraphs) {
+            XWPFParagraph para = document.createParagraph();
+            para.setIndentationFirstLine(480); // 首行缩进2字符
+            XWPFRun run = para.createRun();
+            run.setText(paraText);
+            run.setFontFamily("宋体");
+            run.setFontSize(12);
+
+            // 解析HTML中的图片<img>标签，嵌入文档
+            List<String> imgSrcs = extractImageSources(paraText);
+            for (String imgSrc : imgSrcs) {
+                Path imgPath = imageMap.get(imgSrc);
+                if (imgPath != null) {
+                    addImageToDocument(document, imgPath);
+                }
+            }
+        }
+    }
+
+    // 3. 生成参考文献列表
+    XWPFParagraph refTitle = document.createParagraph();
+    XWPFRun refRun = refTitle.createRun();
+    refRun.setText("参考文献");
+    refRun.setBold(true);
+    refRun.setFontSize(16);
+
+    int index = 1;
+    for (String formatted : formattedRefs) {
+        XWPFParagraph refPara = document.createParagraph();
+        XWPFRun run = refPara.createRun();
+        run.setText("[" + (index++) + "] " + formatted);
+        run.setFontFamily("宋体");
+        run.setFontSize(10.5); // 五号字
+    }
+
+    // 4. 输出到文件
+    try (FileOutputStream out = new FileOutputStream(outputPath)) {
+        document.write(out);
+    }
+    document.close();
+}
+\end{lstlisting}
+
+\subsection{LibreOffice PDF转换}
+
+DOCX文件生成完成后，通过Java Runtime调用LibreOffice命令行进行PDF转换：
+
+\begin{lstlisting}[language=Java,caption={LibreOffice PDF转换命令}]
+// 转换命令
+// soffice --headless --convert-to pdf demo.docx
+
+String libreOfficePath = "C:\\Program Files\\LibreOffice\\program\\soffice.exe";
+String docxPath = "/path/to/output.docx";
+String outputDir = "/path/to/output/";
+
+ProcessBuilder pb = new ProcessBuilder(
+    libreOfficePath,
+    "--headless",
+    "--convert-to", "pdf",
+    "--outdir", outputDir,
+    docxPath
+);
+pb.redirectErrorStream(true);
+Process process = pb.start();
+int exitCode = process.waitFor();
+
+if (exitCode == 0) {
+    // 转换成功，在outputDir下生成同名.pdf文件
+} else {
+    // 转换失败，读取错误流记录日志
+}
+\end{lstlisting}
+
+关键技术要点：
+\begin{itemize}
+    \item \textbf{中文支持}：生成DOCX时必须显式设置中文字体（宋体），确保LibreOffice转换时正确渲染；
+    \item \textbf{文件隔离}：每个导出任务在独立临时目录中操作，避免并发写入冲突；
+    \item \textbf{超时控制}：设置合理的Process执行超时时间（建议120秒），超时后强制终止进程防止僵尸进程；
+    \item \textbf{异步执行}：导出操作在异步任务线程池中执行，不阻塞用户的其他操作。
+\end{itemize}
+
+\subsection{技术验证结论}
+
+经技术验证，文档导出方案已达到以下成果：
+
+\begin{table}[htbp]
+\centering
+\caption{技术验证结果汇总}
+\label{tab:verify_result}
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{验证项} & \textbf{结果} & \textbf{说明} \\
+\hline
+POI创建中文标题 & 通过 & 宋体22pt，居中加粗，中文无乱码 \\
+\hline
+POI中文正文段落 & 通过 & 宋体12pt，首行缩进2字符 \\
+\hline
+POI表格创建 & 通过 & 4×4表格，单元格内容+样式正常 \\
+\hline
+LibreOffice无头转换 & 通过 & DOCX→PDF全自动，转换后中文正常 \\
+\hline
+参考文献格式化 & 通过 & GB/T 7714五种类型均正确输出 \\
+\hline
+图片上传与访问 & 通过 & Multipart上传→本地存储→URL访问 \\
+\hline
+\end{tabular}
+\end{table}
+
+结论：Apache POI 5.x + LibreOffice无头转换的技术方案可行，可进入正式开发阶段。
+% 过渡：导出算法 → 学生端UI
+% ============================================================
+% 4_D_student_ui.tex — 学生端页面详细设计 + 控件 + 校验
+% 编写人：D  日期：2026-07-15
+% ============================================================
+
+\section{学生端页面详细设计概述}
+
+学生端共涉及8个核心页面/对话框，本章逐一描述每个页面的布局结构、控件清单、数据绑定、交互逻辑及输入校验规则。所有页面遵循Element Plus设计规范，统一使用 \#409EFF（主题蓝）作为主色调，\#67C23A（成功绿）、\#E6A23C（警告橙）、\#F56C6C（危险红）作为辅助功能色。
+
+% ============================================================
+\subsection{页面1：登录页（Login.vue）}
+
+\subsubsection{页面布局}
+居中双栏卡片布局，整体宽度960px，垂直水平居中。左侧（占40\%宽度）为品牌展示区，显示系统Logo、名称"论文生成系统"、副标题。右侧（占60\%宽度）为登录表单区。
+
+\subsubsection{控件清单}
+\begin{table}[htbp]
+    \centering
+    \caption{登录页控件明细}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{控件类型} & \textbf{字段名} & \textbf{控件说明} & \textbf{校验规则} \\
+        \hline
+        el-input & username & 学号输入框 & 必填，纯数字，8-12位 \\
+        \hline
+        el-input(type=password) & password & 密码输入框，带显示/隐藏图标 & 必填，≥6位 \\
+        \hline
+        el-checkbox & remember & "记住我"复选框 & 无校验 \\
+        \hline
+        el-button(type=primary) & — & "登 录"按钮，宽度100\% & 表单校验通过后可用 \\
+        \hline
+        el-link & — & "还没有账号？立即注册"链接 & — \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{交互逻辑}
+\begin{enumerate}
+    \item 用户输入学号和密码，点击"登录"按钮或按Enter键提交；
+    \item 前端调用表单校验，校验通过后调用 authStore.login(username, password)；
+    \item 登录成功后跳转至论文列表页 /papers；登录失败在输入框下方显示红色错误提示；
+    \item 若勾选"记住我"，Token存储至localStorage；否则使用sessionStorage。
+\end{enumerate}
+
+\subsubsection{输入校验规则}
+\begin{lstlisting}[language=JavaScript]
+const loginRules = {
+    username: [
+        { required: true, message: '请输入学号', trigger: 'blur' },
+        { pattern: /^\d{8,12}$/, message: '学号为8-12位数字', trigger: 'blur' }
+    ],
+    password: [
+        { required: true, message: '请输入密码', trigger: 'blur' },
+        { min: 6, message: '密码长度不少于6位', trigger: 'blur' }
+    ]
+}
+\end{lstlisting}
+
+% ============================================================
+\subsection{页面2：注册页（Register.vue）}
+
+\subsubsection{页面布局}
+布局风格与登录页一致，右侧表单区域扩展为5个字段。注册成功后自动跳转至登录页并弹出绿色成功提示。
+
+\subsubsection{控件清单}
+\begin{table}[htbp]
+    \centering
+    \caption{注册页控件明细}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{控件类型} & \textbf{字段名} & \textbf{控件说明} & \textbf{校验规则} \\
+        \hline
+        el-input & studentId & 学号 & 必填，数字，8-12位，后端唯一校验 \\
+        \hline
+        el-input & name & 姓名 & 必填，2-20个字符 \\
+        \hline
+        el-input & email & 邮箱 & 必填，合法邮箱格式 \\
+        \hline
+        el-input(type=password) & password & 密码 & 必填，≥6位，含字母+数字 \\
+        \hline
+        el-input(type=password) & confirmPassword & 确认密码 & 必填，与password一致 \\
+        \hline
+        el-button(type=primary) & — & "注 册"按钮 & 所有校验通过后可用 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{交互逻辑}
+\begin{enumerate}
+    \item 用户填写全部字段，前端实时校验各项输入；
+    \item 学号输入框在失焦时触发唯一性校验；
+    \item 全部校验通过后，提交 POST /api/v1/auth/register；
+    \item 注册成功跳转登录页；注册失败显示具体错误。
+\end{enumerate}
+
+\subsubsection{输入校验规则}
+\begin{lstlisting}[language=JavaScript]
+const registerRules = {
+    studentId: [
+        { required: true, message: '请输入学号', trigger: 'blur' },
+        { pattern: /^\d{8,12}$/, message: '学号为8-12位数字', trigger: 'blur' }
+    ],
+    name: [
+        { required: true, message: '请输入姓名', trigger: 'blur' },
+        { min: 2, max: 20, message: '姓名为2-20个字符', trigger: 'blur' }
+    ],
+    email: [
+        { required: true, message: '请输入邮箱', trigger: 'blur' },
+        { type: 'email', message: '邮箱格式不正确', trigger: 'blur' }
+    ],
+    password: [
+        { required: true, message: '请输入密码', trigger: 'blur' },
+        { min: 6, message: '密码长度不少于6位', trigger: 'blur' },
+        { pattern: /^(?=.*[a-zA-Z])(?=.*\d)/, message: '密码需包含字母和数字', trigger: 'blur' }
+    ],
+    confirmPassword: [
+        { required: true, message: '请确认密码', trigger: 'blur' },
+        { validator: (rule, value, callback) => {
+            if (value !== form.password) callback(new Error('两次密码不一致'))
+            else callback()
+        }, trigger: 'blur' }
+    ]
+}
+\end{lstlisting}
+
+% ============================================================
+\subsection{页面3：论文列表页（PaperList.vue）}
+
+\subsubsection{页面布局}
+顶部：el-input搜索框 + el-select排序下拉框 + el-button(type=primary)"新建论文"按钮。主体区域：论文卡片网格布局（响应式：≥1200px四列，≥768px两列，<768px单列）。
+
+\subsubsection{控件清单}
+\begin{table}[htbp]
+    \centering
+    \caption{论文列表页控件明细}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{控件类型} & \textbf{控件说明} & \textbf{数据绑定} \\
+        \hline
+        el-input(搜索) & 按论文标题搜索，输入防抖300ms & v-model="searchKeyword" \\
+        \hline
+        el-select & 排序方式选择 & v-model="sortBy" \\
+        \hline
+        el-button(type=primary) & 新建论文按钮 & @click前往创建页 \\
+        \hline
+        PaperCard(自定义) & 论文卡片组件 & v-for循环渲染 \\
+        \hline
+        el-pagination & 分页器（每页12条） & v-model:current-page \\
+        \hline
+        el-empty & 空状态插画 & v-if空列表 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{论文卡片子组件设计}
+每张论文卡片（PaperCard）包含：
+\begin{itemize}
+    \item 论文标题（el-text，最多显示2行，超出省略号截断）；
+    \item 模板名称标签（el-tag，type=info，size=small）；
+    \item 最后修改时间（相对时间格式："3小时前"、"昨天 14:30"）；
+    \item 字数统计（"约12,500字"）；
+    \item 操作按钮组：编辑（type=primary, link）、预览（type=success, link）、删除（type=danger, link）。
+\end{itemize}
+
+\subsubsection{交互逻辑}
+\begin{enumerate}
+    \item 页面挂载时调用 GET /api/v1/papers 获取论文列表；
+    \item 搜索关键词变更（防抖300ms）或排序方式变更时，重新请求后端接口；
+    \item 点击"编辑"按钮，跳转至 /editor/:paperId；
+    \item 点击"预览"按钮，在新标签页打开 /preview/:paperId；
+    \item 点击"删除"按钮，弹出ElMessageBox二次确认对话框，确认后删除；
+    \item 论文卡片hover时浮现浅色阴影和上移动画。
+\end{enumerate}
+
+% ============================================================
+\subsection{页面4：论文创建向导（PaperCreate.vue）}
+
+\subsubsection{页面布局}
+使用el-steps步骤条引导三步创建流程：基本信息 → 选择模板 → 确认创建。
+
+\subsubsection{控件清单}
+\begin{table}[htbp]
+    \centering
+    \caption{论文创建向导控件明细}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{步骤} & \textbf{控件类型} & \textbf{控件说明} & \textbf{校验规则} \\
+        \hline
+        第一步 & el-input & 论文标题 & 必填，1-200字符 \\
+        \cline{2-4}
+        & el-select & 所属学院选择 & 必选 \\
+        \hline
+        第二步 & TemplateCard(自定义) & 模板卡片列表，单选 & 必选 \\
+        \hline
+        第三步 & el-descriptions & 汇总展示标题、学院、模板 & — \\
+        \cline{2-4}
+        & el-button(type=primary) & "确认创建"按钮 & — \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{交互逻辑}
+\begin{enumerate}
+    \item 步骤条已完成步骤可点击回退，未完成步骤不可跳过；
+    \item 第一步选择学院后，第二步自动加载对应模板列表；
+    \item 第二步点击模板卡片进行单选，高亮选中状态；
+    \item 第三步展示汇总信息，点击"确认创建"提交，成功后自动跳转编辑器。
+\end{enumerate}
+
+% ============================================================
+\subsection{页面5：论文编辑器主页面（PaperEditor.vue）}
+
+这是学生端最核心、最复杂的页面，采用三栏可调整布局。
+
+\subsubsection{页面布局}
+整体高度100vh，三栏布局：
+\begin{itemize}
+    \item \textbf{顶部工具栏栏（高度48px）}：论文标题显示 + 保存状态指示器 + 预览按钮 + 导出按钮 + 返回列表按钮；
+    \item \textbf{左侧章节树面板（默认260px，可拖拽宽度）}：章节树控件 + 添加章节按钮，可收起至40px；
+    \item \textbf{中心编辑区（flex:1）}：顶部格式工具栏 + Tiptap富文本编辑区域；
+    \item \textbf{右侧辅助面板（默认320px）}：Tab切换"参考文献" / "模板信息"，可收起。
+\end{itemize}
+
+\subsubsection{控件清单}
+
+\textbf{顶部工具栏栏：}
+\begin{itemize}
+    \item el-text(tag="h3") — 论文标题，点击可编辑
+    \item SaveIndicator(自定义) — 保存状态："已保存 ✓ 15:30" / "保存中..." / "未保存 ⚠"
+    \item el-button(plain) — "预览"按钮，新标签页打开预览
+    \item el-button(type=primary) — "导出"按钮，弹出ExportDialog
+    \item el-button(text) — "← 返回列表"按钮，含未保存确认
+\end{itemize}
+
+\textbf{左侧章节树面板：}
+\begin{itemize}
+    \item el-tree — 章节树，支持node拖拽排序，自定义节点渲染，右键上下文菜单
+    \item el-button(text) — "+ 添加章节"按钮
+\end{itemize}
+
+\textbf{章节树右键菜单（自定义el-dropdown）：}
+\begin{itemize}
+    \item "添加同级章节"、"添加子章节"、"重命名"（章节名称变为el-input）、"删除章节"（含子章节提示）
+\end{itemize}
+
+\textbf{中心编辑区格式工具栏：}
+\begin{table}[htbp]
+    \centering
+    \caption{编辑器格式工具栏控件}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{分组} & \textbf{控件} & \textbf{Tiptap命令} \\
+        \hline
+        文本样式 & el-button-group(加粗/斜体/下划线/删除线) & toggleBold/Italic/Underline/Strike \\
+        \hline
+        标题层级 & el-select(正文/H1/H2/H3/H4) & toggleHeading \\
+        \hline
+        文字颜色 & el-color-picker(文字色/背景色) & setColor/setHighlight \\
+        \hline
+        对齐方式 & el-button-group(左/中/右/两端) & setTextAlign \\
+        \hline
+        列表 & el-button-group(有序/无序) & toggleOrderedList/BulletList \\
+        \hline
+        缩进 & el-button-group(增/减缩进) & indent/outdent \\
+        \hline
+        插入 & el-button(引用/图片/表格) & 打开对应面板 \\
+        \hline
+        撤销/重做 & el-button-group & undo/redo \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\textbf{右侧辅助面板（Tab切换）：}
+\begin{itemize}
+    \item 参考文献管理Tab：el-table(列表) + el-button(添加) + 行内编辑/删除/引用按钮
+    \item 模板信息Tab：当前模板名称 + 样式描述 + 缩略图 + el-button("切换模板")
+\end{itemize}
+
+\subsubsection{编辑器核心交互流程}
+
+\begin{enumerate}
+    \item \textbf{页面初始化}：获取paperId → 并行请求论文详情和章节树 → 创建Tiptap实例 → 加载首章节 → 注册beforeunload监听
+    \item \textbf{章节切换}：点击el-tree节点 → 检查未保存修改 → 执行保存 → 请求新章节内容 → editor.commands.setContent()
+    \item \textbf{自动保存（useAutoSave composable）}：监听editor onUpdate → 标记脏数据 → 30秒防抖 → 自动PUT请求 → 更新保存状态
+    \item \textbf{章节拖拽}：el-tree draggable → node-drop事件 → PUT提交新顺序 → 失败则回滚
+\end{enumerate}
+
+\subsubsection{章节名称校验规则}
+\begin{lstlisting}[language=JavaScript]
+const sectionNameRules = [
+    { required: true, message: '请输入章节名称', trigger: 'blur' },
+    { max: 100, message: '章节名称不超过100个字符', trigger: 'blur' },
+    { pattern: /^[^\<\>\:\"\/\\\|\?\*]+$/, message: '不能包含特殊字符', trigger: 'blur' }
+]
+\end{lstlisting}
+
+% ============================================================
+\subsection{页面6：参考文献管理面板（ReferencePanel.vue）}
+
+\subsubsection{布局}
+侧边面板内垂直布局：顶部"添加文献"按钮，主体el-table（列：序号、作者、标题、年份、操作），底部统计"共N条文献"。
+
+\subsubsection{参考文献表单校验规则}
+\begin{lstlisting}[language=JavaScript]
+const referenceRules = {
+    type: [{ required: true, message: '请选择文献类型', trigger: 'change' }],
+    author: [{ required: true, message: '请输入作者', trigger: 'blur' }],
+    title: [{ required: true, message: '请输入标题', trigger: 'blur' },
+            { max: 500, message: '标题不超过500字符', trigger: 'blur' }],
+    journal: [{ required: true, message: '请输入期刊/出版社', trigger: 'blur' }],
+    year: [{ required: true, message: '请输入年份', trigger: 'blur' },
+           { pattern: /^\d{4}$/, message: '年份为4位数字', trigger: 'blur' }],
+    doi: [{ pattern: /^10\.\d+/, message: 'DOI格式不正确', trigger: 'blur' }]
+}
+\end{lstlisting}
+
+\subsubsection{交互逻辑}
+\begin{enumerate}
+    \item 面板展开时加载已有文献列表；
+    \item 添加/编辑操作弹出el-dialog，表单字段根据文献类型动态显示；
+    \item 删除操作弹出确认框，若正文有引用则提示"正文中有N处引用该文献"；
+    \item 用户点击文献行"引用"按钮，编辑器光标位置插入引用标记节点。
+\end{enumerate}
+
+% ============================================================
+\subsection{页面7：导出对话框（ExportDialog.vue）}
+
+\subsubsection{布局}
+el-dialog模态对话框（宽度560px），纵向排列导出配置选项。
+
+\subsubsection{控件清单}
+\begin{table}[htbp]
+    \centering
+    \caption{导出对话框控件明细}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{控件类型} & \textbf{控件说明} & \textbf{默认值} \\
+        \hline
+        el-radio-group & 导出格式（DOCX / PDF） & PDF \\
+        \hline
+        el-checkbox-group & 导出范围（全部/自定义）+ el-tree-select & 全部章节 \\
+        \hline
+        el-checkbox & "包含封面页" & 勾选 \\
+        \hline
+        el-checkbox & "包含目录" & 勾选 \\
+        \hline
+        el-checkbox & "包含参考文献列表" & 勾选 \\
+        \hline
+        el-progress & 导出进度条（提交后显示） & 0\% \\
+        \hline
+        el-button(type=primary) & "开始导出" / "下载文件" & 状态切换 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{交互逻辑}
+\begin{enumerate}
+    \item 选择格式和范围 → 提交 POST /api/v1/papers/:id/export → 返回taskId；
+    \item 前端每2秒轮询 GET /api/v1/export/:taskId/status → 更新进度条；
+    \item 完成时按钮变为"下载文件"，触发浏览器下载；
+    \item 失败时显示红色错误信息 + "重新导出"按钮。
+\end{enumerate}
+
+% ============================================================
+\subsection{页面8：个人中心页（Profile.vue）}
+
+\subsubsection{布局}
+el-tabs切换三个子面板：个人信息、修改密码、导出历史。el-form表单布局（label-width="100px"）。
+
+\subsubsection{控件摘要}
+\begin{itemize}
+    \item \textbf{个人信息Tab}：el-input（姓名、邮箱、手机号）+ el-button("保存修改")
+    \item \textbf{修改密码Tab}：el-input(type=password)（原密码、新密码、确认新密码）+ el-button("修改密码")
+    \item \textbf{导出历史Tab}：el-table（文件名/格式/时间/状态/下载按钮）
+\end{itemize}
+
+\subsubsection{校验规则}
+\begin{lstlisting}[language=JavaScript]
+const profileRules = {
+    name: [{ required: true, min: 2, max: 20, message: '姓名为2-20个字符', trigger: 'blur' }],
+    email: [{ required: true, type: 'email', message: '邮箱格式不正确', trigger: 'blur' }],
+    phone: [{ pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确', trigger: 'blur' }]
+}
+const passwordRules = {
+    oldPassword: [{ required: true, message: '请输入原密码', trigger: 'blur' }],
+    newPassword: [
+        { required: true, min: 6, message: '密码长度不少于6位', trigger: 'blur' },
+        { pattern: /^(?=.*[a-zA-Z])(?=.*\d)/, message: '密码需包含字母和数字', trigger: 'blur' }
+    ],
+    confirmPassword: [
+        { required: true, message: '请确认新密码', trigger: 'blur' },
+        { validator: (rule, value, callback) => {
+            if (value !== form.newPassword) callback(new Error('两次密码不一致'))
+            else callback()
+        }, trigger: 'blur' }
+    ]
+}
+\end{lstlisting}
+
+% ============================================================
+\section{全局交互规范}
+
+\subsection{消息提示规范}
+\begin{itemize}
+    \item 操作成功：ElMessage.success()，绿色，显示2秒；
+    \item 操作失败：ElMessage.error()，红色，显示3秒，附带具体错误原因；
+    \item 删除确认：统一使用 ElMessageBox.confirm()。
+\end{itemize}
+
+\subsection{加载状态规范}
+\begin{itemize}
+    \item 页面级加载：el-skeleton骨架屏；
+    \item 按钮级加载：el-button的 :loading 属性；
+    \item 局部刷新：el-table的 v-loading 指令。
+\end{itemize}
+
+\subsection{响应式适配断点}
+\begin{itemize}
+    \item 桌面端（≥1280px）：论文列表4列，编辑器三栏完整；
+    \item 平板端（768-1279px）：论文列表2列，编辑器侧面板默认收起；
+    \item 移动端（<768px）：论文列表1列，编辑器仅编辑区 + 抽屉式章节列表。
+\end{itemize}
+% 过渡：学生端UI → 管理员端与教师端UI
+% ============================================================
+% 5_E_admin_teacher_ui.tex — 管理员端 + 教师端 UI 详细设计
+% 编写人：E  日期：2026-07-15
+% 职责：管理员页面控件 / 教师批阅交互 / 前端校验规则 / 状态管理
+% ============================================================
+
+\section{管理员端页面详细设计}
+
+\subsection{页面1：仪表盘页（AdminDashboard.vue）}
+
+\subsubsection{页面布局}
+仪表盘页采用四卡片+双图表的网格布局，上方为四个指标卡片排列成一行，下方为两个图表并排展示。页面顶部右侧提供时间范围选择器（el-date-picker），筛选后全局刷新图表数据。
+
+\subsubsection{控件清单}
+\begin{table}[htbp]
+\centering
+\caption{仪表盘页控件明细}
+\label{tab:admin_dashboard}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{控件类型} & \textbf{用途} & \textbf{数据来源} & \textbf{交互逻辑} \\
+\hline
+StatCard（自定义） & 显示统计数字 & GET /api/admin/stats & 页面加载时一次性获取 \\
+\hline
+el-date-picker & 时间范围筛选 & — & 选择触发图表数据刷新 \\
+\hline
+Chart（ECharts） & 论文状态分布饼图 & GET /api/admin/stats/papers-by-status & 按选中时间范围查询 \\
+\hline
+Chart（ECharts） & 导出趋势折线图 & GET /api/admin/stats/export-trend & 按选中时间范围查询 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{数据接口}
+\begin{lstlisting}[language=Java,caption={仪表盘数据接口定义}]
+// 获取统计数据概览
+GET /api/admin/stats
+Response: {
+  totalUsers: 150,      // 总用户数
+  totalStudents: 120,   // 学生数
+  totalTeachers: 25,    // 教师数
+  totalAdmins: 5,       // 管理员数
+  totalPapers: 200,     // 论文总数
+  totalTemplates: 10,   // 模板总数
+  todayExports: 15      // 今日导出数
+}
+
+// 获取论文状态分布
+GET /api/admin/stats/papers-by-status?start=&end=
+Response: [{ status: "DRAFT", count: 80 }, ...]
+
+// 获取导出趋势
+GET /api/admin/stats/export-trend?start=&end=
+Response: [{ date: "2026-07-10", count: 5 }, ...]
+\end{lstlisting}
+
+\subsection{页面2：学院管理页（CollegeAdmin.vue）}
+
+\subsubsection{控件清单}
+\begin{table}[htbp]
+\centering
+\caption{学院管理页控件明细}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{控件类型} & \textbf{字段/用途} & \textbf{校验规则} & \textbf{数据操作} \\
+\hline
+el-table & 学院列表展示 & — & 行数据由API填充 \\
+\hline
+el-input & 搜索框 & 最大长度50 & 输入触发前端过滤 \\
+\hline
+el-dialog + el-form & 新增/编辑表单 & 名称非空、代码唯一 & POST/PUT API \\
+\hline
+el-button & 删除操作 & — & 二次确认后 DELETE \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{交互逻辑}
+\begin{enumerate}
+    \item 页面加载时调用 GET /api/admin/colleges 获取学院列表，渲染至el-table；
+    \item 点击"新增学院"按钮，弹出Dialog，表单包含name（必填）、code（必填，唯一）两字段；
+    \item 表单校验通过后提交 POST /api/admin/colleges，成功后关闭Dialog并刷新列表；
+    \item 点击编辑图标，弹出Dialog预填当前行数据，提交 PUT /api/admin/colleges/{id}；
+    \item 点击删除图标，弹出二次确认框，确认后调用 DELETE /api/admin/colleges/{id}，若服务端返回关联校验错误（如存在关联模板），在前端以 ElMessage.error 展示错误信息。
+\end{enumerate}
+
+\subsection{页面3：模板管理页（TemplateAdmin.vue）}
+
+\subsubsection{页面布局}
+双栏布局：左侧为模板卡片列表（宽度320px），右侧为模板编辑面板（自适应宽度）。左侧上方提供筛选栏（按类型下拉选择 + 按学院下拉选择 + 搜索框）。右侧编辑面板使用Tabs组织三个配置子页面。
+
+\subsubsection{模板卡片组件设计}
+每个模板卡片展示：模板名称（加粗16px）、类型标签（el-tag，颜色按类型区分：毕业=蓝色、课程=绿色、项目=橙色）、当前版本号、启用状态开关（el-switch，独立提交 PUT /api/admin/templates/{id}/toggle）。卡片选中状态以左侧蓝色边框高亮标记。
+
+\subsubsection{封面字段配置面板}
+封面字段配置采用拖拽排序的列表实现：
+\begin{itemize}
+    \item 列表项显示字段标签（如"论文题目"）、是否必填标记、字段类型（文本/日期/下拉选择）；
+    \item 每个列表项右侧提供编辑和删除按钮；
+    \item 列表底部有"添加字段"按钮，点击弹出字段配置Dialog（字段标签、是否必填、字段类型、默认值）；
+    \item 拖拽使用vuedraggable库实现，拖拽完成后自动更新cover_fields数组顺序，标记为未保存状态。
+\end{itemize}
+
+\subsubsection{章节结构配置面板}
+使用el-tree组件展示树形章节结构，每个节点右侧显示章节类型标识（chapter/section/subsection）。根节点（论文标题）不可删除。交互功能包括：
+\begin{itemize}
+    \item 右键菜单（@node-contextmenu事件）：新增同级章节、新增子章节、重命名、删除、上移、下移；
+    \item 拖拽（draggable属性）：跨层级拖拽调整章节归属关系，拖拽时校验不产生循环引用；
+    \item 节点点击选中后，右侧展示该章节的详细配置（章节标题输入框、章节类型下拉选择、默认内容占位符）。
+\end{itemize}
+
+\subsubsection{格式参数配置面板}
+格式参数配置采用el-form垂直布局，分组排列：
+\begin{itemize}
+    \item 页面设置组：纸张大小下拉选择（A4/Legal/Letter）、上/下/左/右边距数字输入框（el-input-number，单位cm，步进0.1）；
+    \item 字体设置组：正文字体下拉选择、正文字号下拉选择、一级标题字体/字号、二级标题字体/字号、三级标题字体/字号；
+    \item 段落设置组：行距倍数滑块（el-slider，范围1.0-2.5，步进0.1）、段前间距数字输入框、段后间距数字输入框；
+    \item 页眉页脚组：奇偶页眉内容输入框、页码格式下拉选择、页码位置单选组。
+\end{itemize}
+
+配置变更时，顶部的"保存"按钮由禁用状态变为可用，底部显示"有未保存的更改"提示条。保存时调用 PUT /api/admin/templates/{id}/config，后端自动执行版本递增逻辑。
+
+\section{教师端页面详细设计}
+
+\subsection{页面1：批阅任务列表页（ReviewList.vue）}
+
+\subsubsection{页面布局}
+顶部为筛选操作栏，主体为表格视图。筛选栏包含：学院下拉选择框、论文类型下拉选择框、状态选项卡（全部/待批阅/已批阅/已退回）。
+
+\subsubsection{控件清单}
+\begin{table}[htbp]
+\centering
+\caption{批阅任务列表页控件明细}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{控件类型} & \textbf{用途} & \textbf{数据来源} & \textbf{交互} \\
+\hline
+el-tabs & 状态筛选 & — & 切换触发数据重新加载 \\
+\hline
+el-select & 学院筛选 & GET /api/colleges & 联动刷新列表 \\
+\hline
+el-table & 论文列表展示 & GET /api/teacher/reviews & 分页加载 \\
+\hline
+el-tag & 状态标签 & 状态字段映射 & 颜色区分：橙=待批阅、绿=已批阅、灰=已退回 \\
+\hline
+el-button & 进入批阅 & — & 点击跳转 /teacher/reviews/{id} \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{数据接口}
+\begin{lstlisting}[language=Java,caption={批阅列表接口定义}]
+// 获取批阅任务列表
+GET /api/teacher/reviews?status=&collegeId=&page=&size=
+Response: {
+  records: [{
+    id: 1,
+    thesisId: 10,
+    thesisTitle: "基于Spring Boot的在线论文生成系统",
+    studentName: "张三",
+    collegeName: "计算机科学与技术学院",
+    submittedAt: "2026-07-14 10:30:00",
+    status: "SUBMITTED",   // SUBMITTED / REVIEWED / RETURNED
+    annotationCount: 0,    // 批注数量
+    score: null,           // 分数
+    grade: null            // 等级
+  }],
+  total: 50,
+  page: 1,
+  size: 20
+}
+\end{lstlisting}
+
+\subsection{页面2：论文批阅页（ReviewDetail.vue）}
+
+\subsubsection{页面布局}
+三栏布局。左侧栏宽度260px展示章节树导航，中间栏自适应宽度展示论文全文预览，右侧栏宽度340px展示批注管理面板。顶部操作栏包含论文标题、学生信息、操作按钮区（评阅完成按钮、返回列表按钮）。
+
+\subsubsection{章节树面板}
+使用el-tree组件展示论文完整章节树，章节节点显示标题和该章节的批注数量角标。当前选中的章节高亮显示。教师点击章节节点时切换中间栏的预览内容，同时右侧批注面板加载对应章节的批注列表。
+
+\subsubsection{论文预览区}
+论文内容以HTML渲染展示，容器样式模拟A4纸张效果（白色背景、阴影边框、标准页边距）。核心交互逻辑：
+\begin{itemize}
+    \item 使用contenteditable=false的div容器展示HTML内容，确保教师不可编辑；
+    \item 已批注的文字以黄色背景色（\#FFF5CC）高亮标记，并添加波浪下划线样式；
+    \item 教师选中文字时触发selectionchange事件，获取选中文本的起始偏移量和长度；
+    \item 选中文字后在选中区域上方浮动出现"添加批注（Alt+A）"按钮，点击后触发右侧批注编辑区。
+\end{itemize}
+
+\subsubsection{批注定位算法}
+
+教师选中文段时，需要精确记录选中文字在原始HTML内容中的位置，以便将来再次打开批阅时能正确定位到同一段文字。
+
+\begin{lstlisting}[language=JavaScript,caption={批注位置定位算法}]
+// 获取选中文字在HTML纯文本中的偏移量
+function getSelectionOffset(container) {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return null;
+
+    const range = selection.getRangeAt(0);
+    const preRange = document.createRange();
+    preRange.selectNodeContents(container);
+    preRange.setEnd(range.startContainer, range.startOffset);
+
+    // 计算纯文本起始偏移（忽略HTML标签）
+    const startOffset = preRange.toString().length;
+    const textLength = selection.toString().length;
+
+    return { startOffset, textLength, selectedText: selection.toString() };
+}
+
+// 打开批阅时定位到已有批注位置
+function scrollToAnnotation(annotation) {
+    const container = document.getElementById('preview-content');
+    const text = container.textContent || container.innerText;
+    const beforeText = text.substring(0, annotation.startOffset);
+    const targetText = text.substring(
+        annotation.startOffset,
+        annotation.startOffset + annotation.textLength
+    );
+
+    // 使用 Range API 定位并高亮
+    const range = document.createRange();
+    // 遍历文本节点查找目标位置（省略具体遍历实现）
+    // 定位后滚动到可见区域
+    range.collapse(true);
+    const rect = range.getBoundingClientRect();
+    container.scrollTop += rect.top - 200; // 偏移200px保证上下文可见
+}
+\end{lstlisting}
+
+\subsubsection{批注面板}
+右侧面板分为上下两部分：
+\begin{itemize}
+    \item \textbf{上部 — 批注列表}：按创建时间降序排列当前章节的全部批注。每条批注展示：批注内容摘要（截取前50字）、被选中原文（灰色斜体，用引号包裹）、创建时间（相对时间如"3分钟前"）。点击批注项时，中间栏自动滚动定位到对应原文位置；
+    \item \textbf{下部 — 批注编辑区}：使用textarea组件展示教师输入的批注内容。当教师选中原文时，自动填充"选中文字"预览区域（只读），textarea获取焦点等待输入。提供"提交批注"按钮（POST /api/annotations）和"取消"按钮。
+\end{itemize}
+
+\subsection{评分对话框详细设计}
+
+\subsubsection{控件布局}
+评分对话框使用el-dialog组件，宽度620px，标题为"评阅论文"。内容表单分三部分：
+\begin{enumerate}
+    \item \textbf{评语区域}：使用Tiptap轻量级富文本编辑器（或el-input type="textarea"），placeholder为"请输入整体评语（可选）"，最大长度5000字符；
+    \item \textbf{评分区域}：el-slider水平滑块，最小值0，最大值100，步进1，显示当前分值（大号数字：48px字体），评分下方自动展示对应等级标签（el-tag）：
+    \begin{itemize}
+        \item $\ge$90：红色标签"优秀"
+        \item 80-89：蓝色标签"良好"
+        \item 70-79：黄色标签"中等"
+        \item 60-69：绿色标签"及格"
+        \item <60：灰色标签"不及格"
+    \end{itemize}
+    \item \textbf{操作区域}：el-radio-group横向排列，"通过（REVIEWED）"为绿色按钮样式，"退回（RETURNED）"为红色按钮样式。选择"退回"后下方动态展开textarea输入框用于填写退回原因（必填，最小10字符）。
+\end{enumerate}
+
+\subsubsection{校验规则}
+\begin{table}[htbp]
+\centering
+\caption{评分对话框校验规则}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{字段} & \textbf{规则} & \textbf{错误提示} & \textbf{触发时机} \\
+\hline
+评语 & 最大5000字符 & 超出长度限制 & 输入时 \\
+\hline
+评分 & 0-100整数 & 请输入0-100之间的整数 & 提交时 \\
+\hline
+操作类型 & 必选 & 请选择操作类型 & 提交时 \\
+\hline
+退回原因 & 操作类型=RETURNED时必填，最小10字符 & 退回原因至少10个字符 & 提交时 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{提交流程}
+\begin{enumerate}
+    \item 教师点击Dialog的"确认提交"按钮；
+    \item 前端执行校验：评分范围、退回原因条件必填；
+    \item 校验通过后调用 POST /api/teacher/reviews，请求体包含 thesisId、commentHtml、score、action、returnReason（可选）；
+    \item 提交成功后关闭Dialog，前端显示 ElMessage.success("评阅完成")，跳转回批阅任务列表页；
+    \item 提交失败时显示 ElMessage.error，保留当前Dialog中的表单数据供教师修正。
+\end{enumerate}
+
+\subsection{前端状态管理}
+
+教师端批阅页面涉及多个组件间的状态共享，使用Pinia store进行管理：
+
+\begin{lstlisting}[language=JavaScript,caption={批阅页面Pinia Store定义}]
+// stores/review.ts
+export const useReviewStore = defineStore('review', () => {
+    // 当前批阅的论文信息
+    const currentThesis = ref(null)
+    // 章节树列表
+    const sections = ref([])
+    // 当前选中的章节ID
+    const activeSectionId = ref(null)
+    // 当前章节的全部批注
+    const annotations = ref([])
+    // 当前选中的文本信息（用于添加批注）
+    const selectedText = ref(null)
+    // 加载状态
+    const loading = ref(false)
+
+    // 加载论文批阅数据
+    async function loadReview(thesisId) {
+        loading.value = true
+        const [thesisRes, sectionsRes] = await Promise.all([
+            api.getThesisDetail(thesisId),
+            api.getSections(thesisId)
+        ])
+        currentThesis.value = thesisRes.data
+        sections.value = sectionsRes.data
+        loading.value = false
+    }
+
+    // 切换章节时更新批注列表
+    async function switchSection(sectionId) {
+        activeSectionId.value = sectionId
+        const res = await api.getAnnotations(currentThesis.value.id, sectionId)
+        annotations.value = res.data
+    }
+
+    return {
+        currentThesis, sections, activeSectionId,
+        annotations, selectedText, loading,
+        loadReview, switchSection
+    }
+})
+\end{lstlisting}
+% 过渡：管理员与教师端UI → 批阅/缓存/部署
+% ============================================
+% F 负责：详细设计 - 批阅模块 + Redis策略 + 部署
+% ============================================
+
+\section{批阅模块、缓存策略与部署详细设计}
+
+本章对批阅子系统、Redis 缓存策略以及容器化部署方案进行详细设计。批阅子系统涵盖论文提交、教师批注、评语打分与退回重改四大核心流程；Redis 策略部分给出缓存 Key 规范、序列化方案及防穿透/击穿/雪崩的工程实现；部署部分提供完整的 Dockerfile、docker\-compose 编排文件与环境配置模板。
+
+% ===== 7.1 批阅模块详细设计 =====
+\subsection{批阅模块详细设计}
+
+批阅模块是连接学生与教师的核心交互子系统。学生在完成论文编辑后提交论文进入批阅流程；教师对论文各章节添加批注，最终给出综合评语与打分（通过或退回）。本节从数据模型、服务层接口、RESTful API 与流程设计四方面展开。
+
+\subsubsection{数据模型}
+
+模块涉及三张核心数据表：\texttt{submission}（提交记录）、\texttt{annotation}（教师批注）和 \texttt{review\_record}（评语/批阅记录），以及关联的 \texttt{thesis}（论文）与 \texttt{thesis\_section}（章节）。
+
+\begin{figure}[htbp]
+\centering
+\begin{verbatim}
+thesis (论文)
+   │  1
+   │
+   ├── N ── submission (提交记录)
+   │           thesis_id  FK→thesis.id
+   │           student_id FK→sys_user.id
+   │           version_number
+   │           submitted_at
+   │
+   ├── N ── annotation (批注)
+   │           thesis_id  FK→thesis.id
+   │           section_id FK→thesis_section.id
+   │           teacher_id FK→sys_user.id
+   │           start_offset, text_length
+   │           selected_text, content
+   │
+   └── N ── review_record (批阅记录)
+               thesis_id  FK→thesis.id
+               teacher_id FK→sys_user.id
+               comment_html, score, grade
+               action: REVIEWED | RETURNED
+               return_reason
+\end{verbatim}
+\caption{批阅模块实体关系图}
+\label{fig:review-er}
+\end{figure}
+
+\textbf{（1）Submission —— 提交记录}
+
+\begin{table}[htbp]
+\centering
+\caption{Submission 表字段说明}
+\label{tab:submission-fields}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{字段} & \textbf{类型} & \textbf{约束} & \textbf{说明} \\
+\hline
+id & BIGSERIAL & PK & 主键自增 \\
+\hline
+thesis\_id & BIGINT & FK NOT NULL & 关联论文 \\
+\hline
+student\_id & BIGINT & FK NOT NULL & 提交学生 \\
+\hline
+version\_number & INT & NOT NULL, DEFAULT 1 & 提交版本号，每次提交递增 \\
+\hline
+submitted\_at & TIMESTAMP & DEFAULT NOW & 提交时间 \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{（2）Annotation —— 教师批注}
+
+\begin{table}[htbp]
+\centering
+\caption{Annotation 表字段说明}
+\label{tab:annotation-fields}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{字段} & \textbf{类型} & \textbf{约束} & \textbf{说明} \\
+\hline
+id & BIGSERIAL & PK & 主键自增 \\
+\hline
+thesis\_id & BIGINT & FK NOT NULL & 关联论文 \\
+\hline
+section\_id & BIGINT & FK NOT NULL & 关联具体章节 \\
+\hline
+teacher\_id & BIGINT & FK NOT NULL & 批注教师 \\
+\hline
+start\_offset & INT & NOT NULL & 选中文本在章节内容中的起始偏移 \\
+\hline
+text\_length & INT & NOT NULL & 选中文本长度 \\
+\hline
+selected\_text & TEXT & 可空 & 被标注的原文内容 \\
+\hline
+content & TEXT & NOT NULL & 教师的批注意见 \\
+\hline
+created\_at & TIMESTAMP & DEFAULT NOW & 创建时间 \\
+\hline
+\end{tabular}
+\end{table}
+
+批注采用定位式设计：前端富文本编辑器在用户选中某段文字并添加批注时，记录选中文字相对于章节正文的 \texttt{start\_offset} 与 \texttt{text\_length}。重新渲染时根据偏移量定位到原文位置并高亮显示批注标记。
+
+\textbf{（3）ReviewRecord —— 批阅记录}
+
+\begin{table}[htbp]
+\centering
+\caption{ReviewRecord 表字段说明}
+\label{tab:review-fields}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{字段} & \textbf{类型} & \textbf{约束} & \textbf{说明} \\
+\hline
+id & BIGSERIAL & PK & 主键自增 \\
+\hline
+thesis\_id & BIGINT & FK NOT NULL & 关联论文 \\
+\hline
+teacher\_id & BIGINT & FK NOT NULL & 批阅教师 \\
+\hline
+comment\_html & TEXT & 可空 & 富文本综合评语 \\
+\hline
+score & INT & CHECK [0,100] & 评分（0-100分制） \\
+\hline
+grade & VARCHAR(10) & 可空 & 等级映射（优/良/中/及格/不及格） \\
+\hline
+action & VARCHAR(20) & NOT NULL & REVIEWED（通过）或 RETURNED（退回） \\
+\hline
+return\_reason & TEXT & 可空 & 退回原因（action=RETURNED 时必填） \\
+\hline
+created\_at & TIMESTAMP & DEFAULT NOW & 创建时间 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{服务层设计}
+
+为三层实体分别定义 Service 接口与实现类，统一继承项目已有的分层架构规范。
+
+\textbf{SubmissionService 核心方法：}
+
+\begin{lstlisting}[language=Java, caption=SubmissionService 接口核心方法]
+public interface SubmissionService {
+    /**
+     * 学生提交论文：校验论文归属、更新状态为SUBMITTED、
+     * 生成版本号递增的提交记录
+     */
+    Submission submitThesis(Long thesisId, Long studentId);
+
+    /** 查询某论文的全部提交历史（按时间倒序） */
+    List<Submission> getSubmissionHistory(Long thesisId);
+}
+\end{lstlisting}
+
+提交逻辑实现要点：
+\begin{enumerate}
+    \item 校验 thesisId 对应的论文状态是否为 DRAFT 或 RETURNED（只有这两种状态允许提交）。
+    \item 校验 studentId 是否为该论文的所有者（防止越权提交他人论文）。
+    \item 查询当前最大 version\_number，新提交的版本号 = max + 1。
+    \item 创建 Submission 记录，更新 thesis.status = SUBMITTED。
+    \item 整个操作包裹在 \texttt{@Transactional} 中保证原子性。
+\end{enumerate}
+
+\textbf{AnnotationService 核心方法：}
+
+\begin{lstlisting}[language=Java, caption=AnnotationService 接口核心方法]
+public interface AnnotationService {
+    /** 教师创建批注 */
+    Annotation createAnnotation(Long thesisId, Long sectionId,
+            Long teacherId, int startOffset, int textLength,
+            String selectedText, String content);
+
+    /** 教师修改批注内容 */
+    Annotation updateAnnotation(Long annotationId, String newContent);
+
+    /** 删除单个批注 */
+    void deleteAnnotation(Long annotationId);
+
+    /** 查询某论文全部批注（按创建时间排序） */
+    List<Annotation> getAnnotationsByThesis(Long thesisId);
+
+    /** 查询某论文某章节的全部批注（按偏移量排序） */
+    List<Annotation> getAnnotationsBySection(Long thesisId, Long sectionId);
+}
+\end{lstlisting}
+
+批注创建实现要点：
+\begin{enumerate}
+    \item 校验 teacherId 对应角色的用户是否为 TEACHER。
+    \item 校验 sectionId 对应的章节是否属于 thesisId 对应的论文（防止跨论文越权批注）。
+    \item start\_offset 与 text\_length 合法性校验：offset $\ge 0$，length $> 0$，offset + length $\le$ 章节正文总长度。
+    \item 创建 Annotation 记录后返回给前端，前端根据偏移量在编辑器中渲染高亮标记。
+\end{enumerate}
+
+\textbf{ReviewRecordService 核心方法：}
+
+\begin{lstlisting}[language=Java, caption=ReviewRecordService 接口核心方法]
+public interface ReviewRecordService {
+    /** 教师提交批阅结果 */
+    ReviewRecord submitReview(Long thesisId, Long teacherId,
+            String commentHtml, Integer score, String grade,
+            String action, String returnReason);
+
+    /** 查询某论文的全部批阅记录 */
+    List<ReviewRecord> getReviewHistory(Long thesisId);
+}
+\end{lstlisting}
+
+批阅逻辑实现要点：
+\begin{enumerate}
+    \item 校验论文状态必须为 SUBMITTED（已提交但尚未批阅的论文才可批阅）。
+    \item 若 action = RETURNED，returnReason 不可为空，此时将 thesis.status 更新为 RETURNED。
+    \item 若 action = REVIEWED，将 thesis.status 更新为 REVIEWED。
+    \item score 范围校验：0 $\le$ score $\le$ 100。
+    \item 整个操作在 \texttt{@Transactional} 中完成，确保评分记录与状态更新的一致。
+\end{enumerate}
+
+\subsubsection{API 端点设计}
+
+所有 API 路径以 \texttt{/api/v1} 为前缀，遵循 RESTful 风格。需要认证的端点通过 \texttt{@RoleRequired} 注解声明所需角色。
+
+\begin{table}[htbp]
+\centering
+\caption{批阅模块 API 端点一览}
+\label{tab:review-api}
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\textbf{方法} & \textbf{路径} & \textbf{角色} & \textbf{说明} \\
+\hline
+POST & /api/v1/submissions/{thesisId} & STUDENT & 提交论文 \\
+\hline
+GET & /api/v1/submissions/thesis/{thesisId} & ALL & 查看提交历史 \\
+\hline
+POST & /api/v1/annotations & TEACHER & 创建批注 \\
+\hline
+PUT & /api/v1/annotations/\{id\} & TEACHER & 修改批注 \\
+\hline
+DELETE & /api/v1/annotations/\{id\} & TEACHER & 删除批注 \\
+\hline
+GET & /api/v1/annotations/thesis/{thesisId} & ALL & 查看论文所有批注 \\
+\hline
+GET & /api/v1/annotations/thesis/{thesisId}/section/{sectionId} & ALL & 查看章节批注 \\
+\hline
+POST & /api/v1/reviews/{thesisId} & TEACHER & 提交批阅结果 \\
+\hline
+GET & /api/v1/reviews/thesis/{thesisId} & ALL & 查看批阅历史 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{批阅流程状态机}
+
+论文在批阅子系统中经历以下状态迁移：
+
+\begin{verbatim}
+DRAFT ──(学生编辑完成)──→ COMPLETED ──(学生提交)──→ SUBMITTED
+                                                       │
+                    ┌──────────────────────────────────┤
+                    │                                  │
+                    ▼                                  ▼
+              REVIEWED (通过)                    RETURNED (退回)
+                                                      │
+                                                      │
+                    ┌─────────────────────────────────┘
+                    │
+                    ▼
+           (学生修改论文，回到 DRAFT 状态，可再次提交)
+\end{verbatim}
+
+状态变更规则：
+\begin{itemize}
+    \item DRAFT → COMPLETED：学生确认论文编辑完成（前端触发，非提交动作）。
+    \item COMPLETED → SUBMITTED：学生调用提交接口，创建 Submission 记录。
+    \item SUBMITTED → REVIEWED：教师打回通过结果（action=REVIEWED），论文定稿。
+    \item SUBMITTED → RETURNED：教师打回退回结果（action=RETURNED），须填写退回原因，学生可查看后修改并重新提交。
+    \item RETURNED → SUBMITTED：学生修改后重新提交（视为下一版本）。
+\end{itemize}
+
+% ===== 7.2 Redis 缓存策略详细设计 =====
+\subsection{Redis 缓存策略详细设计}
+
+本节给出 Redis 在业务层中的具体应用模式与 Java 代码实现范例，涵盖缓存读取、写入、失效与防穿透/击穿/雪崩的工程手段。
+
+\subsubsection{Cache-Aside 模式实现}
+
+以学院列表缓存为例，展示标准的 Cache-Aside 读写流程：
+
+\begin{lstlisting}[language=Java, caption=学院列表缓存的 Cache-Aside 实现]
+@Service
+@RequiredArgsConstructor
+public class CollegeService {
+    private final CollegeRepository collegeRepo;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private static final String CACHE_KEY = "college:list";
+    private static final Duration TTL = Duration.ofHours(1);
+
+    public List<College> getAllColleges() {
+        // 1. 查缓存
+        Object cached = redisTemplate.opsForValue().get(CACHE_KEY);
+        if (cached != null) {
+            return (List<College>) cached;
+        }
+        // 2. 缓存未命中，查数据库
+        List<College> colleges = collegeRepo.findAll();
+        // 3. 写入缓存（带 TTL + 随机偏移防雪崩）
+        if (!colleges.isEmpty()) {
+            Duration ttl = TTL.plusMillis(
+                ThreadLocalRandom.current().nextLong(0, 600_000)); // ±10min
+            redisTemplate.opsForValue().set(CACHE_KEY, colleges, ttl);
+        } else {
+            // 4. 缓存空值防穿透，短 TTL
+            redisTemplate.opsForValue().set(CACHE_KEY, "NULL",
+                Duration.ofSeconds(60));
+        }
+        return colleges;
+    }
+
+    public College saveCollege(College college) {
+        College saved = collegeRepo.save(college);
+        // 5. 数据变更时主动删除缓存
+        redisTemplate.delete(CACHE_KEY);
+        return saved;
+    }
+}
+\end{lstlisting}
+
+\subsubsection{章节草稿自动保存}
+
+学生编辑论文时，前端每隔 30 秒将当前章节的草稿内容通过 API 暂存至 Redis。Redis 的高写入性能天然适合此类高频小型写入场景，避免对 PostgreSQL 的频繁更新。
+
+\begin{lstlisting}[language=Java, caption=草稿自动保存实现]
+@Service
+@RequiredArgsConstructor
+public class DraftService {
+    private final RedisTemplate<String, Object> redisTemplate;
+    private static final Duration DRAFT_TTL = Duration.ofMinutes(30);
+
+    public void saveDraft(Long thesisId, Long sectionId,
+                          String draftContent) {
+        String key = "draft:" + thesisId + ":" + sectionId;
+        redisTemplate.opsForValue().set(key, draftContent, DRAFT_TTL);
+    }
+
+    public String getDraft(Long thesisId, Long sectionId) {
+        String key = "draft:" + thesisId + ":" + sectionId;
+        Object val = redisTemplate.opsForValue().get(key);
+        return val != null ? val.toString() : null;
+    }
+
+    public void deleteDraft(Long thesisId, Long sectionId) {
+        String key = "draft:" + thesisId + ":" + sectionId;
+        redisTemplate.delete(key);
+    }
+}
+\end{lstlisting}
+
+\subsubsection{JWT 令牌管理}
+
+用户登录成功后生成 JWT，将 Token 存储于 Redis 并与用户 ID 关联。用户主动登出或管理员强制下线时，将 Token 标记为失效。
+
+\begin{lstlisting}[language=Java, caption=登录与登出的 Redis 操作]
+// 登录成功
+String token = jwtUtil.generateToken(userId, role);
+redisTemplate.opsForValue().set("token:" + userId, token,
+    Duration.ofHours(24));
+
+// 登出
+redisTemplate.delete("token:" + userId);
+// Token 黑名单（可选增强：存储 jti 在黑名单中）
+redisTemplate.opsForValue().set("blacklist:" + tokenId, "1",
+    Duration.ofHours(24));
+\end{lstlisting}
+
+JwtFilter 在校验每个请求时，先从 Redis 查询 Token 是否在黑名单中。若存在，即使 JWT 签名有效也拒绝该请求。Token 续期则通过独立的 Refresh Token（有效期 7 天）进行，Refresh Token 同样存储于 Redis。
+
+\subsubsection{API 限流实现}
+
+基于 Redis 计数器实现登录接口的简单限流：
+
+\begin{lstlisting}[language=Java, caption=基于 Redis 的登录限流实现]
+@Component
+@RequiredArgsConstructor
+public class RateLimiter {
+    private final RedisTemplate<String, Object> redisTemplate;
+
+    // 60 秒内同一 IP 最多登录 5 次
+    public boolean tryAcquire(String ip) {
+        String key = "rate:" + ip + ":login";
+        Long count = redisTemplate.opsForValue().increment(key);
+        if (count != null && count == 1) {
+            redisTemplate.expire(key, Duration.ofSeconds(60));
+        }
+        return count != null && count <= 5;
+    }
+}
+\end{lstlisting}
+
+每次登录尝试调用 \texttt{tryAcquire(clientIp)}，若返回 false 则拒绝请求并返回 HTTP 429（Too Many Requests）。
+
+\subsubsection{缓存监控与运维}
+
+\begin{itemize}
+    \item \textbf{内存使用监控：} 通过 Redis \texttt{INFO memory} 命令定期采集 \texttt{used\_memory\_human} 指标，设置 80\% 告警阈值。
+    \item \textbf{命中率统计：} 在 Service 层埋点记录缓存命中/未命中次数，通过 Actuator 的 \texttt{/actuator/metrics} 暴露自定义指标 \texttt{cache.hit.ratio}。
+    \item \textbf{慢查询日志：} Redis 配置 \texttt{slowlog-log-slower-than 10000}（超过 10ms 记录），定期巡检有无因大 Key 或复杂数据结构导致的慢操作。
+\end{itemize}
+
+% ===== 7.3 部署详细设计 =====
+\subsection{部署详细设计}
+
+本节提供可直接使用的 Dockerfile、Docker Compose 编排文件及环境配置模板，确保在任何安装了 Docker 的 Linux 服务器上均可一键启动完整系统。
+
+\subsubsection{Dockerfile}
+
+采用多阶段构建（Multi-stage Build），第一阶段使用 Maven 编译打包，第二阶段使用精简 JRE 镜像运行，最终镜像体积控制在 200MB 以内。
+
+\begin{lstlisting}[language=Dockerfile, caption=多阶段构建 Dockerfile]
+# ============ 构建阶段 ============
+FROM maven:3.9-eclipse-temurin-21 AS builder
+WORKDIR /build
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+COPY src ./src
+RUN mvn clean package -DskipTests -q
+
+# ============ 运行阶段 ============
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY --from=builder /build/target/*.jar app.jar
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD wget -qO- http://localhost:8080/actuator/health || exit 1
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+\end{lstlisting}
+
+\subsubsection{Docker Compose 编排}
+
+以下编排文件定义了三个服务及其依赖关系、网络与数据卷。
+
+\begin{lstlisting}[language=YAML, caption=docker-compose.yml]
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: thesis-pg
+    environment:
+      POSTGRES_DB: thesis_generator
+      POSTGRES_USER: thesis_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-thesis_pass}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - thesis-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thesis_user -d thesis_generator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  redis:
+    image: redis:7-alpine
+    container_name: thesis-redis
+    command: redis-server --appendonly yes --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    networks:
+      - thesis-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  app:
+    build: .
+    container_name: thesis-app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql:
+        //postgres:5432/thesis_generator
+      SPRING_DATASOURCE_USERNAME: thesis_user
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-thesis_pass}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - thesis-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  thesis-net:
+    driver: bridge
+\end{lstlisting}
+
+\subsubsection{关键配置说明}
+
+\begin{enumerate}
+    \item \textbf{Redis 持久化：} \texttt{--appendonly yes} 启用 AOF（Append Only File）持久化，确保 Redis 重启后缓存数据不丢失（用于恢复草稿与令牌状态）。\texttt{--maxmemory 256mb --maxmemory-policy allkeys-lru} 设置内存上限并在满时自动淘汰最近最少使用的 Key。
+    \item \textbf{数据库密码：} 通过 \texttt{\$\{DB\_PASSWORD\}} 环境变量注入，避免密码硬编码在配置文件中。启动时通过 \texttt{export DB\_PASSWORD=xxx \&\& docker-compose up -d} 或 \texttt{.env} 文件传入。
+    \item \textbf{JWT 密钥：} 同样通过环境变量 \texttt{\$\{JWT\_SECRET\}} 注入，生产环境须更换为足够强度的随机字符串（建议 256 位以上）。
+    \item \textbf{健康检查：} PostgreSQL 使用 \texttt{pg\_isready} 命令、Redis 使用 \texttt{redis-cli ping}、应用使用 Actuator health 端点。应用的 \texttt{depends\_on} 设置为依赖 PostgreSQL 与 Redis 均 healthy 后才启动。
+    \item \textbf{网络隔离：} 仅应用容器的 8080 端口对外暴露，数据库与缓存的端口仅在内部 \texttt{thesis-net} 网络中可达，避免外部直接攻击数据存储层。
+\end{enumerate}
+
+\subsubsection{生产环境补充建议}
+
+\begin{itemize}
+    \item \textbf{反向代理：} 在 Docker Compose 中添加 Nginx 容器作为入口反向代理，配置 HTTPS 终止、静态资源缓存与请求限流。
+    \item \textbf{日志收集：} 应用日志（通过 Logback）输出到 stdout，由 Docker 的 \texttt{json-file} 日志驱动收集，再通过 Filebeat 或 Promtail 接入集中式日志平台（ELK / Loki）。
+    \item \textbf{监控告警：} 集成 Prometheus + Grafana，通过 Spring Boot Actuator 的 \texttt{/actuator/prometheus} 端点暴露 JVM 指标、HTTP 请求指标与自定义缓存命中率指标。
+    \item \textbf{数据库备份：} 为 PostgreSQL 数据卷配置定时备份脚本（\texttt{pg\_dump}），将备份文件上传至对象存储（如阿里云 OSS / AWS S3）。
+    \item \textbf{集群扩展：} 当单机性能不足时，可将应用容器扩展为多副本（\texttt{docker-compose up --scale app=3}），前端加 Nginx 负载均衡；Redis 升级为哨兵模式或集群模式；PostgreSQL 采用主从复制读写分离。
+\end{itemize}
+
+\subsubsection{部署操作手册}
+
+\begin{enumerate}
+    \item \textbf{环境准备：} 确保服务器已安装 Docker $\ge 24.0$ 与 Docker Compose $\ge 2.20$。
+    \item \textbf{获取代码：} \texttt{git clone https://github.com/zzy154204-gif/thesis-generator.git \&\& cd thesis-generator}。
+    \item \textbf{设置环境变量（可选）：}
+    \begin{verbatim}
+    export DB_PASSWORD=your_secure_db_password
+    export JWT_SECRET=your_256bit_random_secret
+    \end{verbatim}
+    \item \textbf{构建并启动：} \texttt{docker-compose up -d --build}。
+    \item \textbf{验证服务：}
+    \begin{verbatim}
+    curl http://localhost:8080/actuator/health
+    # 预期返回: {"status":"UP"}
+    \end{verbatim}
+    \item \textbf{查看日志：} \texttt{docker-compose logs -f app}。
+    \item \textbf{停止服务：} \texttt{docker-compose down}（保留数据）；\texttt{docker-compose down -v}（清除所有数据）。
+\end{enumerate}
 \end{document}

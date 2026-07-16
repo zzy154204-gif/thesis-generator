@@ -16,17 +16,7 @@ export function logout(): Promise<ApiResult> {
   return request.post('/auth/logout')
 }
 
-/** 获取当前用户信息 */
-export function getProfile(): Promise<ApiResult<UserInfo>> {
-  return request.get('/auth/profile')
-}
-
-/** 修改个人信息 */
-export function updateProfile(data: Partial<UserInfo>): Promise<ApiResult> {
-  return request.put('/auth/profile', data)
-}
-
-/** 修改密码 */
-export function changePassword(oldPassword: string, newPassword: string): Promise<ApiResult> {
-  return request.put('/auth/password', { oldPassword, newPassword })
-}
+// TODO: 待后端实现以下接口后启用
+// GET /auth/profile  — 获取当前用户信息
+// PUT /auth/profile  — 修改个人信息
+// PUT /auth/password — 修改密码

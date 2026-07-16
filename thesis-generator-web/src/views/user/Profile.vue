@@ -53,7 +53,16 @@ import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { useAuthStore } from '@/stores/auth'
-import { updateProfile, changePassword as changePwdApi } from '@/api/auth'
+// TODO: 待后端实现 PUT /auth/profile 和 PUT /auth/password 后对接
+import request from '@/api/request'
+async function updateProfile(data: Record<string, unknown>): Promise<void> {
+  // TODO: PUT /auth/profile
+  await request.put('/auth/profile', data)
+}
+async function changePwdApi(data: { oldPassword: string; newPassword: string }): Promise<void> {
+  // TODO: PUT /auth/password
+  await request.put('/auth/password', data)
+}
 import type { FormInstance, FormRules } from 'element-plus'
 
 const authStore = useAuthStore()
@@ -99,7 +108,7 @@ async function changePassword() {
   if (!pwdFormRef.value) return
   await pwdFormRef.value.validate(async (valid) => {
     if (!valid) return
-    await changePwdApi(pwdForm.oldPassword, pwdForm.newPassword)
+    await changePwdApi({ oldPassword: pwdForm.oldPassword, newPassword: pwdForm.newPassword })
     ElMessage.success('密码修改成功，请重新登录')
     authStore.logout()
   })

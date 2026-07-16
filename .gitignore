@@ -45,6 +45,13 @@ uploads/
 .DS_Store
 Thumbs.db
 
+### LaTeX ###
+*.aux
+*.out
+*.toc
+*.log
+*.synctex.gz
+
 ### Log ###
 *.log
 
@@ -52,3 +59,4 @@ Thumbs.db
 thesis-generator-web/node_modules/
 thesis-generator-web/dist/
 thesis-generator-web/.vite/
+redis-binaries/

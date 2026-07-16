@@ -1,5 +1,6 @@
 package com.example.thesisgenerator.common;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.FieldError;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.stream.Collectors;
 
+@Hidden
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
