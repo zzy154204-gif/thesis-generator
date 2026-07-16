@@ -19,17 +19,17 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
-    private final RedisTemplate<String, Object> redisTemplate;
     private final BCryptPasswordEncoder passwordEncoder;
+
+    @Autowired(required = false)
+    private RedisTemplate<String, Object> redisTemplate;
 
     public AuthService(UserRepository userRepository,
                        JwtUtil jwtUtil,
-                       BCryptPasswordEncoder passwordEncoder,
-                       @Autowired(required = false) RedisTemplate<String, Object> redisTemplate) {
+                       BCryptPasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.jwtUtil = jwtUtil;
         this.passwordEncoder = passwordEncoder;
-        this.redisTemplate = redisTemplate;
     }
 
     public LoginResponse login(LoginRequest request) {
