@@ -1,8 +1,7 @@
-﻿package com.example.thesisgenerator.service;
+package com.example.thesisgenerator.service;
 
 import com.example.thesisgenerator.entity.Template;
 import com.example.thesisgenerator.entity.TemplateVersion;
-import com.example.thesisgenerator.entity.Thesis;
 import com.example.thesisgenerator.repository.TemplateRepository;
 import com.example.thesisgenerator.repository.TemplateVersionRepository;
 import com.example.thesisgenerator.repository.ThesisRepository;
@@ -35,13 +34,12 @@ public class TemplateService {
 
     public Template findById(Long id) {
         return templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("模板不存在"));
+                .orElseThrow(() -> new RuntimeException("Template not found: " + id));
     }
 
     @Transactional
     public Template create(Template template) {
         Template saved = templateRepository.save(template);
-        // 自动创建 V1.0 版本
         TemplateVersion version = new TemplateVersion();
         version.setTemplateId(saved.getId());
         version.setVersionNumber("1.0");
@@ -62,19 +60,16 @@ public class TemplateService {
     @Transactional
     public void delete(Long id) {
         findById(id);
-        // 检查是否有进行中的论文引用
         List<TemplateVersion> versions = versionRepository.findByTemplateIdOrderByCreatedAtDesc(id);
         for (TemplateVersion v : versions) {
-            long count = thesisRepository.countByTemplateVersionIdAndStatusNot(
-                    v.getId(), "COMPLETED");
+            long count = thesisRepository.countByTemplateVersionIdAndStatusNot(v.getId(), "COMPLETED");
             if (count > 0) {
-                throw new RuntimeException("该模板下有进行中的论文，无法删除");
+                throw new RuntimeException("Template has active thesis, cannot delete");
             }
         }
         templateRepository.deleteById(id);
     }
 
-    // 版本管理
     public List<TemplateVersion> getVersions(Long templateId) {
         return versionRepository.findByTemplateIdOrderByCreatedAtDesc(templateId);
     }
@@ -83,15 +78,9 @@ public class TemplateService {
     public TemplateVersion createVersion(Long templateId) {
         TemplateVersion current = versionRepository
                 .findByTemplateIdAndIsCurrentTrue(templateId)
-                .orElseThrow(() -> new RuntimeException("当前版本不存在"));
-
-        // 递增版本号
+                .orElseThrow(() -> new RuntimeException("No current version for template: " + templateId));
         String newVersion = incrementVersion(current.getVersionNumber());
-
-        // 旧版本失效
         versionRepository.clearCurrentVersion(templateId);
-
-        // 创建新版本，复制旧版本配置
         TemplateVersion newVer = new TemplateVersion();
         newVer.setTemplateId(templateId);
         newVer.setVersionNumber(newVersion);
@@ -106,7 +95,7 @@ public class TemplateService {
     public TemplateVersion activateVersion(Long templateId, Long versionId) {
         versionRepository.clearCurrentVersion(templateId);
         TemplateVersion target = versionRepository.findById(versionId)
-                .orElseThrow(() -> new RuntimeException("版本不存在"));
+                .orElseThrow(() -> new RuntimeException("Version not found: " + versionId));
         target.setIsCurrent(true);
         return versionRepository.save(target);
     }
@@ -115,7 +104,7 @@ public class TemplateService {
     public TemplateVersion updateVersionConfig(Long versionId,
             String coverFields, String chapterStructure, String formatConfig) {
         TemplateVersion version = versionRepository.findById(versionId)
-                .orElseThrow(() -> new RuntimeException("版本不存在"));
+                .orElseThrow(() -> new RuntimeException("Version not found: " + versionId));
         if (coverFields != null) version.setCoverFields(coverFields);
         if (chapterStructure != null) version.setChapterStructure(chapterStructure);
         if (formatConfig != null) version.setFormatConfig(formatConfig);

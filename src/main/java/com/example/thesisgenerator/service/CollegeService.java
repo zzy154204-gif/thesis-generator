@@ -14,19 +14,19 @@ public class CollegeService {
 
     private final CollegeRepository collegeRepository;
     private final TemplateRepository templateRepository;
-    
+
     public List<College> findAll() {
         return collegeRepository.findAll();
     }
 
     public College findById(Long id) {
         return collegeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("学院不存在"));
+                .orElseThrow(() -> new RuntimeException("College not found: " + id));
     }
 
     public College create(College college) {
         if (collegeRepository.existsByCode(college.getCode())) {
-            throw new RuntimeException("学院代码已存在");
+            throw new RuntimeException("College code already exists: " + college.getCode());
         }
         return collegeRepository.save(college);
     }
@@ -34,15 +34,14 @@ public class CollegeService {
     public College update(Long id, College college) {
         College existing = findById(id);
         existing.setName(college.getName());
-        // code 不可修改
         return collegeRepository.save(existing);
     }
 
     public void delete(Long id) {
         College college = findById(id);
-        long templateCount = templateRepository.countByCollegeId(id);
-        if (templateCount > 0) {
-            throw new RuntimeException("该学院下存在 " + templateCount + " 个关联模板，请先处理");
+        long count = templateRepository.countByCollegeId(id);
+        if (count > 0) {
+            throw new RuntimeException("Cannot delete college with " + count + " associated templates");
         }
         collegeRepository.delete(college);
     }
