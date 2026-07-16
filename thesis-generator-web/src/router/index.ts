@@ -72,10 +72,43 @@ const router = createRouter({
       component: DefaultLayout,
       meta: { requiresAuth: true, roles: ['ADMIN'] },
       children: [
-        { path: 'colleges', component: () => import('@/views/admin/CollegeManage.vue'), meta: { title: '学院管理' } },
-        { path: 'templates', component: () => import('@/views/admin/TemplateList.vue'), meta: { title: '模板管理' } },
-        { path: 'templates/new', component: () => import('@/views/admin/TemplateEditor.vue'), meta: { title: '新建模板' } },
-        { path: 'templates/:id', component: () => import('@/views/admin/TemplateEditor.vue'), meta: { title: '编辑模板' } },
+        {
+          path: 'colleges',
+          component: () => import('@/views/admin/CollegeManage.vue'),
+          meta: { title: '学院管理' }
+        },
+        {
+          path: 'templates',
+          component: () => import('@/views/admin/TemplateList.vue'),
+          meta: { title: '模板管理' }
+        },
+        {
+          path: 'templates/new',
+          component: () => import('@/views/admin/TemplateEditor.vue'),
+          meta: { title: '新建模板' }
+        },
+        {
+          path: 'templates/:id',
+          component: () => import('@/views/admin/TemplateEditor.vue'),
+          meta: { title: '编辑模板' }
+        }
+      ]
+    },
+    {
+      path: '/teacher',
+      component: DefaultLayout,
+      meta: { requiresAuth: true, roles: ['TEACHER'] },
+      children: [
+        {
+          path: 'review',
+          component: () => import('@/views/teacher/PendingList.vue'),
+          meta: { title: '待批阅' }
+        },
+        {
+          path: 'review/:id',
+          component: () => import('@/views/teacher/ReviewDetail.vue'),
+          meta: { title: '批阅详情' }
+        }
       ]
     },
   ],
