@@ -1,7 +1,6 @@
 package com.example.thesisgenerator.service;
 
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -11,12 +10,11 @@ import java.time.Duration;
  * 基于 Redis 计数器的简易限流器
  * 用于登录接口、导出接口等高消耗端点的频率控制
  */
-@Slf4j
 @Service
+@RequiredArgsConstructor
 public class RateLimiterService {
 
-    @Autowired(required = false)
-    private RedisTemplate<String, Object> redisTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     /**
      * 尝试获取许可
@@ -26,10 +24,6 @@ public class RateLimiterService {
      * @return true=放行, false=限流
      */
     public boolean tryAcquire(String key, int limit, int windowSeconds) {
-        if (redisTemplate == null) {
-            log.warn("Redis 不可用，限流跳过");
-            return true;
-        }
         String redisKey = "rate:" + key;
         Long count = redisTemplate.opsForValue().increment(redisKey);
         // 第一次访问时设置过期时间
