@@ -25,6 +25,13 @@
           <el-input v-model="form.email" placeholder="请输入邮箱地址" />
         </el-form-item>
 
+        <el-form-item label="角色" prop="role">
+          <el-select v-model="form.role" placeholder="请选择角色" style="width: 100%">
+            <el-option label="学生" value="STUDENT" />
+            <el-option label="教师" value="TEACHER" />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="密码" prop="password">
           <el-input
             v-model="form.password"
@@ -79,6 +86,7 @@ const form = reactive({
   email: '',
   password: '',
   confirmPassword: '',
+  role: 'STUDENT' as string,
 })
 
 const validateConfirmPassword = (_rule: any, value: string, callback: any) => {
@@ -115,6 +123,9 @@ const rules: FormRules = {
     { required: true, message: '请确认密码', trigger: 'blur' },
     { validator: validateConfirmPassword, trigger: 'blur' },
   ],
+  role: [
+    { required: true, message: '请选择角色', trigger: 'change' },
+  ],
 }
 
 watch(activeTab, (tab) => {
@@ -131,7 +142,7 @@ async function handleRegister() {
         username: form.username,
         password: form.password,
         realName: form.realName,
-        role: 'STUDENT',
+        role: form.role,
       })
       ElMessage.success('注册成功，已自动登录')
       router.push('/papers')
