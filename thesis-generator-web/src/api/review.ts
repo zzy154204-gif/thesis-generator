@@ -1,8 +1,43 @@
 // src/api/review.ts
 import request from './request'
+import type { ApiResult } from '@/types/api'
 
+export interface PendingItem {
+  id: number
+  title: string
+  studentName: string
+  studentId: string
+  course: string
+  status: 'SUBMITTED' | 'REVIEWING'
+  submittedAt: string
+}
+/** 批注 */
+export interface Annotation {
+  id: number
+  content: string
+  author: string
+  createdAt: string
+  startOffset?: number
+  endOffset?: number
+  selectedText?: string
+}
 
-
+/** 批阅详情 */
+export interface ReviewDetail {
+  paper: {
+    id: number
+    title: string
+    studentName: string
+    studentId: string
+    course: string
+    status: string
+    version: number
+    abstract?: string
+    content?: string
+    submittedAt: string
+  }
+  annotations: Annotation[]
+}
 /** 获取待批阅列表 */
 export function getPendingList(params: {
   page: number

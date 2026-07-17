@@ -10,3 +10,18 @@ export function getColleges(): Promise<ApiResult<College[]>> {
 export function getCollege(id: number): Promise<ApiResult<College>> {
   return request.get(`/colleges/${id}`)
 }
+
+/** 创建学院 */
+export function createCollege(data: { name: string; code: string }): Promise<ApiResult<College>> {
+  return request.post('/colleges', data)
+}
+
+/** 更新学院 */
+export function updateCollege(id: number, data: { name: string; code: string }): Promise<ApiResult<College>> {
+  return request.put(`/colleges/${id}`, data)
+}
+
+/** 删除学院 */
+export function deleteCollege(id: number): Promise<ApiResult<void>> {
+  return request.delete(`/colleges/${id}`)
+}

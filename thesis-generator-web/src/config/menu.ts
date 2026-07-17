@@ -25,4 +25,5 @@ export const menuConfig: MenuItem[] = [
 
   // ===== 教师菜单 =====
   { path: '/teacher/review', title: '待批阅', icon: ChatLineSquare, roles: ['TEACHER'] },
+  { path: '/teacher/history', title: '批阅历史', icon: Tickets, roles: ['TEACHER'] },
 ]

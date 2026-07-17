@@ -71,6 +71,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
+import { getPendingList } from '@/api/review'
 
 const router = useRouter()
 const loading = ref(false)
@@ -84,50 +85,24 @@ const tableData = ref<any[]>([])
 // 待批阅数量（从数据中计算）
 const pendingCount = computed(() => tableData.value.filter((item) => item.status === 'SUBMITTED').length)
 
+function formatDate(date: string) {
+  if (!date) return '-'
+  return new Date(date).toLocaleString('zh-CN')
+}
+
+
+// ===== 获取数据 =====
 async function fetchData() {
   loading.value = true
   try {
-    // TODO: 调用真实 API
-    // const res = await reviewApi.getPendingList({
-    //   page: page.value,
-    //   size: pageSize.value,
-    //   keyword: keyword.value,
-    //   course: courseFilter.value,
-    // })
-    // tableData.value = res.data.list
-    // total.value = res.data.total
-
-    await new Promise((r) => setTimeout(r, 500))
-    tableData.value = [
-      {
-        id: 1,
-        title: '基于深度学习的图像分割研究',
-        studentName: '张三',
-        studentId: '2024001',
-        course: '软件工程',
-        status: 'SUBMITTED',
-        submittedAt: '2026-07-15T14:30:00',
-      },
-      {
-        id: 2,
-        title: '区块链技术在供应链中的应用',
-        studentName: '李四',
-        studentId: '2024002',
-        course: '数据结构',
-        status: 'REVIEWING',
-        submittedAt: '2026-07-14T10:20:00',
-      },
-      {
-        id: 3,
-        title: '基于Spring Boot的在线考试系统',
-        studentName: '王五',
-        studentId: '2024003',
-        course: '操作系统',
-        status: 'SUBMITTED',
-        submittedAt: '2026-07-13T16:45:00',
-      },
-    ]
-    total.value = tableData.value.length
+    const res = await getPendingList({
+      page: page.value,
+      size: pageSize.value,
+      keyword: keyword.value,
+      course: courseFilter.value,
+    })
+    tableData.value = res.data.list || []
+    total.value = res.data.total || 0
   } catch {
     ElMessage.error('加载数据失败')
   } finally {

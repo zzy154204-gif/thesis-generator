@@ -68,6 +68,49 @@ export interface Template {
   name: string
   description: string
   collegeId?: number
+  collegeName?: string          // 用于列表展示
+  type: 'GRADUATION' | 'COURSE' | 'PROJECT'
+  status: 'ENABLED' | 'DISABLED'
+  version: string
+
+  // 管理员端扩展字段（完整配置）
+  coverConfig?: CoverFieldConfig[]
+  styleConfig?: StyleConfig
+  structure?: StructureConfig
+}
+
+// 封面字段配置
+export interface CoverFieldConfig {
+  key: string
+  label: string
+  required: boolean
+}
+
+// 样式配置
+export interface StyleConfig {
+  font?: string
+  fontSize?: string
+  headingFont?: string
+  lineHeight?: string
+  indent?: string
+  paragraphSpacing?: number
+  marginTop?: number
+  marginBottom?: number
+  marginLeft?: number
+  marginRight?: number
+  headerText?: string
+  headerFontSize?: string
+  pageNumberPosition?: 'bottomCenter' | 'bottomRight' | 'topCenter'
+}
+
+// 结构配置
+export interface StructureConfig {
+  hasDeclaration?: boolean
+  hasAbstract?: boolean
+  hasEnglishAbstract?: boolean
+  maxHeadingLevel?: number
+  hasAppendix?: boolean
+  hasReferences?: boolean
 }
 
 // 模板版本
@@ -98,6 +141,10 @@ export interface Reference {
 export interface College {
   id: number
   name: string
+  code: string           // 学院代码
+  templateCount?: number // 关联模板数量
+  createdAt?: string
+  updatedAt?: string
 }
 
 // 导出任务

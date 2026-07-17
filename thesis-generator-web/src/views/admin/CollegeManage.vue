@@ -91,7 +91,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
-
+import { getColleges, createCollege, updateCollege, deleteCollege } from '@/api/college'
 // 导入 API（待实现）
 // import { collegeApi } from '@/api/college'
 
@@ -128,17 +128,26 @@ const dialogTitle = computed(() => isEdit.value ? '编辑学院' : '新增学院
 async function fetchData() {
   loading.value = true
   try {
-    // TODO: 调用真实 API
-    // const res = await collegeApi.getList({ page: page.value, size: pageSize.value, keyword: keyword.value })
-    // tableData.value = res.data.list
-    // total.value = res.data.total
+    const res = await getColleges()
+    // 后端返回所有数据，前端做分页和搜索
+    let list = res.data || []
 
-    // 模拟数据
-    tableData.value = [
-      { id: 1, name: '计算机学院', code: 'CS', templateCount: 3, createdAt: '2026-01-01T00:00:00' },
-      { id: 2, name: '电子工程学院', code: 'EE', templateCount: 2, createdAt: '2026-01-02T00:00:00' },
-    ]
-    total.value = 2
+    // 关键词搜索
+    if (keyword.value) {
+      const kw = keyword.value.toLowerCase()
+      list = list.filter(
+        (item) =>
+          item.name.toLowerCase().includes(kw) ||
+          item.code.toLowerCase().includes(kw)
+      )
+    }
+
+    total.value = list.length
+
+    // 前端分页
+    const start = (page.value - 1) * pageSize.value
+    const end = start + pageSize.value
+    tableData.value = list.slice(start, end)
   } catch {
     ElMessage.error('加载数据失败')
   } finally {
@@ -161,6 +170,11 @@ function openDialog(row?: any) {
   dialogVisible.value = true
 }
 
+// ===== 重置表单 =====
+function resetForm() {
+  formRef.value?.resetFields()
+}
+
 // --- 提交 ---
 async function handleSubmit() {
   if (!formRef.value) return
@@ -169,10 +183,10 @@ async function handleSubmit() {
     submitLoading.value = true
     try {
       if (isEdit.value) {
-        // TODO: await collegeApi.update(form.id, { name: form.name, code: form.code })
+        await updateCollege(form.id, { name: form.name, code: form.code })
         ElMessage.success('修改成功')
       } else {
-        // TODO: await collegeApi.create({ name: form.name, code: form.code })
+        await createCollege({ name: form.name, code: form.code })
         ElMessage.success('新增成功')
       }
       dialogVisible.value = false
@@ -192,7 +206,7 @@ function handleDelete(row: any) {
     '警告',
     { confirmButtonText: '确定删除', type: 'warning' }
   ).then(async () => {
-    // TODO: await collegeApi.delete(row.id)
+    await deleteCollege(row.id)
     ElMessage.success('删除成功')
     fetchData()
   }).catch(() => {})

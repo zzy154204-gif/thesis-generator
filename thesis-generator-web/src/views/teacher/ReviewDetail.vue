@@ -10,6 +10,7 @@
         <el-tag :type="paper?.status === 'SUBMITTED' ? 'warning' : 'primary'" size="small">
           {{ paper?.status === 'SUBMITTED' ? '待批阅' : '批阅中' }}
         </el-tag>
+        <el-tag v-if="paper?.version" type="info" size="small">V{{ paper.version }}</el-tag>
       </div>
 
       <!-- 论文信息 -->
@@ -18,7 +19,7 @@
           <el-descriptions-item label="学生">{{ paper?.studentName }}</el-descriptions-item>
           <el-descriptions-item label="学号">{{ paper?.studentId }}</el-descriptions-item>
           <el-descriptions-item label="课程">{{ paper?.course }}</el-descriptions-item>
-          <el-descriptions-item label="提交时间">{{ paper?.submittedAt }}</el-descriptions-item>
+          <el-descriptions-item label="提交时间">{{ formatDate(paper?.submittedAt) }}</el-descriptions-item>
         </el-descriptions>
       </div>
 
@@ -33,15 +34,10 @@
             </el-button>
           </div>
           <div class="preview-content" v-loading="loading">
-            <!-- 论文内容占位 -->
             <div class="paper-content">
               <h2>{{ paper?.title }}</h2>
-              <p style="color:#909399;">摘要：本文研究了...</p>
-              <h3>1. 引言</h3>
-              <p>随着信息技术的发展...</p>
-              <h3>2. 相关工作</h3>
-              <p>在已有研究基础上...</p>
-              <!-- 更多内容 -->
+              <p><strong>摘要：</strong>{{ paper?.abstract || '暂无摘要' }}</p>
+              <div v-html="paper?.content || '<p>论文内容加载中...</p>'"></div>
             </div>
           </div>
         </div>
@@ -49,22 +45,22 @@
         <!-- 右侧：批注侧边栏 -->
         <div class="annotation-sidebar" v-show="showSidebar">
           <div class="sidebar-header">
-            <span>💬 批注</span>
-            <el-button size="small" type="primary" @click="addAnnotation">+ 添加批注</el-button>
+            <span>💬 批注 ({{ annotations.length }})</span>
+            <el-button size="small" type="primary" @click="startAddAnnotation">+ 添加批注</el-button>
           </div>
-          <div class="annotation-list">
+          <div class="annotation-list" v-loading="annotationLoading">
             <div v-for="ann in annotations" :key="ann.id" class="annotation-item">
               <div class="ann-content">{{ ann.content }}</div>
               <div class="ann-meta">
                 <span>{{ ann.author }}</span>
-                <span>{{ new Date(ann.createdAt).toLocaleString('zh-CN') }}</span>
+                <span>{{ formatDate(ann.createdAt) }}</span>
               </div>
               <div class="ann-actions">
                 <el-button size="small" link @click="editAnnotation(ann)">编辑</el-button>
-                <el-button size="small" link type="danger" @click="deleteAnnotation(ann.id)">删除</el-button>
+                <el-button size="small" link type="danger" @click="handleDeleteAnnotation(ann.id)">删除</el-button>
               </div>
             </div>
-            <div v-if="!annotations.length" class="empty-annotations">
+            <div v-if="!annotations.length && !annotationLoading" class="empty-annotations">
               <el-empty description="暂无批注" :image-size="60" />
             </div>
           </div>
@@ -110,66 +106,101 @@
           </div>
         </div>
         <div class="footer-right">
-          <el-button @click="saveDraft">暂存</el-button>
-          <el-button type="warning" @click="handleReturn">退回</el-button>
-          <el-button type="success" @click="handleApprove">通过</el-button>
+          <el-button :loading="draftLoading" @click="saveDraft">暂存</el-button>
+          <el-button type="warning" :loading="returnLoading" @click="handleReturn">退回</el-button>
+          <el-button type="success" :loading="approveLoading" @click="handleApprove">通过</el-button>
         </div>
       </div>
     </div>
+
+    <!-- ============================================================ -->
+    <!-- 编辑批注弹窗 -->
+    <!-- ============================================================ -->
+    <el-dialog
+      v-model="editDialogVisible"
+      title="编辑批注"
+      width="500px"
+      destroy-on-close
+    >
+      <el-input
+        v-model="editContent"
+        type="textarea"
+        :rows="4"
+        placeholder="请输入批注内容"
+      />
+      <template #footer>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editLoading" @click="confirmEdit">
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
   </DefaultLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
+import {
+  getReviewDetail,
+  deleteAnnotation,
+  updateAnnotation,
+  saveReviewDraft,
+  returnPaper,
+  approvePaper,
+  type ReviewDetail as ReviewDetailType,
+  type Annotation,
+} from '@/api/review'
 
 const router = useRouter()
 const route = useRoute()
+const paperId = ref<number>(0)
+
+// ===== 状态 =====
 const loading = ref(false)
+const annotationLoading = ref(false)
+const draftLoading = ref(false)
+const returnLoading = ref(false)
+const approveLoading = ref(false)
 const showSidebar = ref(true)
 
-const paper = ref<any>(null)
+// ===== 编辑批注状态 =====
+const editDialogVisible = ref(false)
+const editLoading = ref(false)
+const editContent = ref('')
+const editingAnnotationId = ref<number | null>(null)
+
+// ===== 数据 =====
+const paper = ref<ReviewDetailType['paper'] | null>(null)
+const annotations = ref<Annotation[]>([])
 const comment = ref('')
 const score = ref<number>(85)
 const grade = ref('良')
-const annotations = ref<any[]>([])
 
+// ===== 格式化日期 =====
+function formatDate(date: string | undefined | null) {
+  if (!date) return '-'
+  return new Date(date).toLocaleString('zh-CN')
+}
+
+// ===== 加载数据 =====
 async function fetchData() {
   const id = route.params.id
+  if (!id) {
+    ElMessage.error('缺少论文ID')
+    return
+  }
+  paperId.value = Number(id)
   loading.value = true
-  try {
-    // TODO: 调用真实 API
-    // const res = await reviewApi.getDetail(Number(id))
-    // paper.value = res.data.paper
-    // annotations.value = res.data.annotations
 
-    await new Promise((r) => setTimeout(r, 500))
-    paper.value = {
-      id: Number(id),
-      title: '基于深度学习的图像分割研究',
-      studentName: '张三',
-      studentId: '2024001',
-      course: '软件工程',
-      status: 'SUBMITTED',
-      submittedAt: '2026-07-15 14:30',
-    }
-    annotations.value = [
-      {
-        id: 1,
-        content: '实验数据来源需要补充引用',
-        author: '教师 李四',
-        createdAt: '2026-07-15T15:00:00',
-      },
-      {
-        id: 2,
-        content: '图表标题格式应为"表1-1 实验对比结果"',
-        author: '教师 李四',
-        createdAt: '2026-07-15T15:30:00',
-      },
-    ]
+  try {
+    const res = await getReviewDetail(paperId.value)
+    const data = res.data
+    paper.value = data.paper
+    annotations.value = data.annotations || []
   } catch {
     ElMessage.error('加载数据失败')
   } finally {
@@ -177,47 +208,102 @@ async function fetchData() {
   }
 }
 
+// ===== 切换侧边栏 =====
 function toggleSidebar() {
   showSidebar.value = !showSidebar.value
 }
 
-function addAnnotation() {
-  ElMessage.info('选中论文文字后点击即可添加批注（开发中）')
+// ===== 添加批注 =====
+function startAddAnnotation() {
+  ElMessage.info('请先在论文预览区选中文字，再添加批注')
 }
 
-function editAnnotation(ann: any) {
-  ElMessage.info('编辑批注功能开发中')
+// ===== 编辑批注 =====
+function editAnnotation(ann: Annotation) {
+  editingAnnotationId.value = ann.id
+  editContent.value = ann.content
+  editDialogVisible.value = true
 }
 
-function deleteAnnotation(id: number) {
+async function confirmEdit() {
+  if (!editContent.value.trim()) {
+    ElMessage.warning('批注内容不能为空')
+    return
+  }
+  if (editingAnnotationId.value === null) return
+
+  const id = editingAnnotationId.value  // 取出 number
+  editLoading.value = true
+  try {
+    await updateAnnotation(paperId.value, id, editContent.value.trim())
+    // ...
+  } catch {
+    ElMessage.error('更新失败')
+  } finally {
+    editLoading.value = false
+  }
+}
+
+// ===== 删除批注 =====
+function handleDeleteAnnotation(annotationId: number) {
   ElMessageBox.confirm('确定删除此批注吗？', '提示', { type: 'warning' })
-    .then(() => {
-      annotations.value = annotations.value.filter((a) => a.id !== id)
-      ElMessage.success('已删除')
+    .then(async () => {
+      annotationLoading.value = true
+      try {
+        await deleteAnnotation(paperId.value, annotationId)
+        annotations.value = annotations.value.filter((a) => a.id !== annotationId)
+        ElMessage.success('已删除')
+      } catch {
+        ElMessage.error('删除失败')
+      } finally {
+        annotationLoading.value = false
+      }
     })
     .catch(() => {})
 }
 
-function saveDraft() {
-  // TODO: 保存评语和评分
-  ElMessage.success('已暂存')
+// ===== 暂存 =====
+async function saveDraft() {
+  draftLoading.value = true
+  try {
+    await saveReviewDraft(paperId.value, {
+      comment: comment.value,
+      score: score.value,
+      grade: grade.value,
+    })
+    ElMessage.success('已暂存')
+  } catch {
+    ElMessage.error('暂存失败')
+  } finally {
+    draftLoading.value = false
+  }
 }
 
+// ===== 退回 =====
 function handleReturn() {
-  if (!comment.value) {
+  if (!comment.value.trim()) {
     ElMessage.warning('请填写退回意见')
     return
   }
   ElMessageBox.confirm('确定退回该论文吗？学生将收到修改通知。', '确认退回', { type: 'warning' })
-    .then(() => {
-      ElMessage.success('已退回')
-      router.back()
+    .then(async () => {
+      returnLoading.value = true
+      try {
+        await returnPaper(paperId.value, { comment: comment.value })
+        ElMessage.success('已退回')
+        router.back()
+      } catch {
+        ElMessage.error('操作失败')
+      } finally {
+        returnLoading.value = false
+      }
     })
     .catch(() => {})
 }
 
+// ===== 通过 =====
 function handleApprove() {
-  if (!comment.value) {
+  if (!comment.value.trim()) {
     ElMessage.warning('请填写评语')
     return
   }
@@ -225,14 +311,32 @@ function handleApprove() {
     ElMessage.warning('请填写分数')
     return
   }
-  ElMessageBox.confirm('确定通过该论文吗？', '确认通过', { type: 'info' })
-    .then(() => {
-      ElMessage.success('已通过')
-      router.back()
+
+  ElMessageBox.confirm(
+    `确定通过该论文吗？得分：${score.value}分，等级：${grade.value}`,
+    '确认通过',
+    { type: 'info' }
+  )
+    .then(async () => {
+      approveLoading.value = true
+      try {
+        await approvePaper(paperId.value, {
+          comment: comment.value,
+          score: score.value,
+          grade: grade.value,
+        })
+        ElMessage.success('已通过')
+        router.back()
+      } catch {
+        ElMessage.error('操作失败')
+      } finally {
+        approveLoading.value = false
+      }
     })
     .catch(() => {})
 }
 
+// ===== 生命周期 =====
 onMounted(fetchData)
 </script>
 

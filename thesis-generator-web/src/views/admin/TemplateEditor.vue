@@ -1,3 +1,4 @@
+<!-- src/views/admin/TemplateEditor.vue -->
 <template>
   <DefaultLayout>
     <div class="template-editor">
@@ -23,7 +24,7 @@
                 <el-input v-model="form.name" placeholder="请输入模板名称" />
               </el-form-item>
               <el-form-item label="所属学院" required>
-                <el-select v-model="form.collegeId" placeholder="请选择学院">
+                <el-select v-model="form.collegeId" placeholder="请选择学院" style="width:100%;">
                   <el-option label="全局" value="" />
                   <el-option v-for="c in colleges" :key="c.id" :label="c.name" :value="c.id" />
                 </el-select>
@@ -38,6 +39,9 @@
               <el-form-item label="模板描述">
                 <el-input v-model="form.description" type="textarea" :rows="3" placeholder="描述模板的适用场景" />
               </el-form-item>
+              <el-form-item label="模板状态">
+                <el-switch v-model="form.statusEnabled" active-text="启用" inactive-text="停用" />
+              </el-form-item>
             </el-form>
           </el-tab-pane>
 
@@ -48,62 +52,7 @@
 
           <!-- Tab3: 样式配置 -->
           <el-tab-pane label="样式配置" name="styles">
-            <div class="style-config" style="padding-top:20px;">
-              <el-form label-width="120px">
-                <el-form-item label="正文字体">
-                  <el-select v-model="styles.font" style="width:200px;">
-                    <el-option label="宋体" value="SimSun" />
-                    <el-option label="黑体" value="SimHei" />
-                    <el-option label="Times New Roman" value="TimesNewRoman" />
-                    <el-option label="Calibri" value="Calibri" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="正文字号">
-                  <el-select v-model="styles.fontSize" style="width:200px;">
-                    <el-option label="五号 (10.5pt)" value="10.5" />
-                    <el-option label="小四 (12pt)" value="12" />
-                    <el-option label="四号 (14pt)" value="14" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="行距">
-                  <el-select v-model="styles.lineHeight" style="width:200px;">
-                    <el-option label="1.5 倍" value="1.5" />
-                    <el-option label="2 倍" value="2" />
-                    <el-option label="固定值 20pt" value="20" />
-                  </el-select>
-                </el-form-item>
-              </el-form>
-            </div>
-          </el-tab-pane>
-
-          <!-- Tab4: 章节结构 -->
-          <el-tab-pane label="章节结构" name="structure">
-            <div class="structure-config" style="padding-top:20px;">
-              <el-form label-width="160px">
-                <el-form-item label="包含原创声明">
-                  <el-switch v-model="structure.hasDeclaration" />
-                </el-form-item>
-                <el-form-item label="包含中文摘要">
-                  <el-switch v-model="structure.hasAbstract" />
-                </el-form-item>
-                <el-form-item label="包含英文摘要">
-                  <el-switch v-model="structure.hasEnglishAbstract" />
-                </el-form-item>
-                <el-form-item label="最大标题层级">
-                  <el-select v-model="structure.maxHeadingLevel" style="width:200px;">
-                    <el-option label="2 级" :value="2" />
-                    <el-option label="3 级" :value="3" />
-                    <el-option label="4 级" :value="4" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="包含附录">
-                  <el-switch v-model="structure.hasAppendix" />
-                </el-form-item>
-                <el-form-item label="包含参考文献">
-                  <el-switch v-model="structure.hasReferences" />
-                </el-form-item>
-              </el-form>
-            </div>
+            <StyleConfig ref="styleConfigRef" v-model="styleConfig" />
           </el-tab-pane>
         </el-tabs>
       </div>
@@ -118,79 +67,153 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import CoverConfig from '@/components/admin/TemplateEditor/CoverConfig.vue'
-
-// 如果组件还不存在，创建占位或临时注释
-// import CoverConfig from '@/components/admin/TemplateEditor/CoverConfig.vue'
+import StyleConfig from '@/components/admin/TemplateEditor/StyleConfig.vue'
+import { getAdminTemplate, createTemplate, updateTemplate } from '@/api/template'
+import { getColleges } from '@/api/college'
 
 const router = useRouter()
 const route = useRoute()
 const saving = ref(false)
+const loading = ref(false)
 const activeTab = ref('basic')
 const coverConfigRef = ref()
+const styleConfigRef = ref()
 const isNew = ref(true)
 
-const colleges = ref([
-  { id: 1, name: '计算机学院' },
-  { id: 2, name: '电子工程学院' },
-  { id: 3, name: '数学学院' },
-])
+// 学院列表
+const colleges = ref<{ id: number; name: string }[]>([])
 
+// 表单数据
 const form = reactive({
   id: 0,
   name: '',
   collegeId: '',
   type: 'GRADUATION' as 'GRADUATION' | 'COURSE' | 'PROJECT',
   description: '',
+  statusEnabled: true,
 })
 
-const styles = reactive({
-  font: 'SimSun',
-  fontSize: '12',
-  lineHeight: '1.5',
-})
+// 样式配置
+const styleConfig = ref({})
 
-const structure = reactive({
-  hasDeclaration: true,
-  hasAbstract: true,
-  hasEnglishAbstract: false,
-  maxHeadingLevel: 3,
-  hasAppendix: false,
-  hasReferences: true,
-})
-
-function onCoverChange(config: any[]) {
-  // 封面配置变化
+function goBack() {
+  router.push('/admin/templates')
 }
 
+// 封面配置变化
+function onCoverChange(config: any[]) {
+  // 封面配置变化时保存到本地
+}
+
+// 预览
+function handlePreview() {
+  // 跳转到预览页面，传递模板数据
+  const data = {
+    ...form,
+    coverConfig: coverConfigRef.value?.getConfig(),
+    styleConfig: styleConfigRef.value?.getConfig(),
+  }
+  // 存储到 sessionStorage 供预览页面使用
+  sessionStorage.setItem('templatePreviewData', JSON.stringify(data))
+  window.open('/admin/templates/preview', '_blank')
+}
+
+async function loadColleges() {
+  try {
+    const res = await getColleges()
+    colleges.value = res.data || []
+  } catch {
+    // 学院列表加载失败，使用空列表
+  }
+}
+
+// ===== 加载模板数据（编辑模式） =====
+async function loadTemplate(id: number) {
+  loading.value = true
+  try {
+    const res = await getAdminTemplate(id)
+    const data = res.data
+
+    form.id = data.id
+    form.name = data.name || ''
+    form.collegeId = data.collegeId?.toString() || ''
+    form.type = data.type || 'GRADUATION'
+    form.description = data.description || ''
+    form.statusEnabled = data.status === 'ENABLED'
+
+    // 设置封面配置
+    if (data.coverConfig && coverConfigRef.value) {
+      coverConfigRef.value.setConfig(data.coverConfig)
+    }
+
+    // 设置样式配置
+    if (data.styleConfig && styleConfigRef.value) {
+      styleConfig.value = data.styleConfig
+    }
+  } catch {
+    ElMessage.error('加载模板数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 保存
+// ===== 保存 =====
 async function handleSave() {
+  // 基础校验
+  if (!form.name.trim()) {
+    ElMessage.warning('请输入模板名称')
+    return
+  }
+  if (!form.collegeId) {
+    ElMessage.warning('请选择所属学院')
+    return
+  }
+
   saving.value = true
   try {
-    const coverConfig = coverConfigRef.value?.getConfig()
-    // TODO: 调用保存 API
-    // await templateApi.save({
-    //   ...form,
-    //   styles,
-    //   structure,
-    //   coverConfig,
-    // })
-    await new Promise((r) => setTimeout(r, 1000))
-    ElMessage.success('保存成功')
-  } catch {
-    ElMessage.error('保存失败')
+    const coverConfig = coverConfigRef.value?.getConfig() || []
+    const styleConfigData = styleConfigRef.value?.getConfig() || {}
+
+    const payload = {
+      name: form.name,
+      type: form.type,
+      collegeId: Number(form.collegeId),
+      description: form.description,
+      status: form.statusEnabled ? 'ENABLED' : 'DISABLED',
+      coverConfig,
+      styles: styleConfigData,
+    }
+
+    if (isNew.value) {
+      await createTemplate(payload)
+      ElMessage.success('模板创建成功')
+    } else {
+      await updateTemplate(form.id, payload)
+      ElMessage.success('模板更新成功')
+    }
+
+    // 保存成功后返回列表
+    setTimeout(() => {
+      router.push('/admin/templates')
+    }, 500)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '保存失败')
   } finally {
     saving.value = false
   }
 }
 
-function handlePreview() {
-  ElMessage.info('预览功能开发中')
-}
-
+// ===== 生命周期 =====
 onMounted(async () => {
+  // 加载学院列表
+  await loadColleges()
+
+  // 判断是否为编辑模式
   const id = route.params.id
   if (id && id !== 'new') {
     isNew.value = false
-    // TODO: 加载模板数据
+    await loadTemplate(Number(id))
   }
 })
 </script>
@@ -211,15 +234,8 @@ onMounted(async () => {
   border-bottom: 1px solid #e4e7ed;
   flex-shrink: 0;
 
-  .title {
-    font-size: 16px;
-    font-weight: 600;
-    flex: 1;
-  }
-  .actions {
-    display: flex;
-    gap: 8px;
-  }
+  .title { font-size: 16px; font-weight: 600; flex: 1; }
+  .actions { display: flex; gap: 8px; }
 }
 
 .editor-body {
