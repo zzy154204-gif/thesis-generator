@@ -111,11 +111,6 @@ const router = createRouter({
         }
       ]
     },
-    {
-      path: '/admin/templates/preview',
-      component: () => import('@/views/admin/TemplatePreview.vue'),
-      meta: { title: '模板预览' }
-    },
   ],
 })
 
