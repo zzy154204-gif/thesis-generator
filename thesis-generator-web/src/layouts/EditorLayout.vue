@@ -111,7 +111,7 @@ const statusTagType = computed(() => ({
   APPROVED: 'success'
 })[props.status || 'DRAFT'] || 'info')
 
-const goBack = () => emit('goBack') || router.push('/papers')
+const goBack = () => { emit('goBack'); router.push('/papers') }
 const handleCommand = (cmd: string) => {
   if (cmd === 'logout') {
     // 退出逻辑

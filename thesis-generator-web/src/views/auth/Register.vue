@@ -13,8 +13,8 @@
         label-position="top"
         size="large"
       >
-        <el-form-item label="学号" prop="username">
-          <el-input v-model="form.username" placeholder="请输入学号" />
+        <el-form-item :label="form.role === 'TEACHER' ? '工号' : '学号'" prop="username">
+          <el-input v-model="form.username" :placeholder="form.role === 'TEACHER' ? '请输入工号' : '请输入学号'" />
         </el-form-item>
 
         <el-form-item label="姓名" prop="realName">
@@ -23,6 +23,13 @@
 
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="form.email" placeholder="请输入邮箱地址" />
+        </el-form-item>
+
+        <el-form-item label="角色" prop="role">
+          <el-select v-model="form.role" placeholder="请选择角色" style="width: 100%">
+            <el-option label="学生" value="STUDENT" />
+            <el-option label="教师" value="TEACHER" />
+          </el-select>
         </el-form-item>
 
         <el-form-item label="密码" prop="password">
@@ -59,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import AuthLayout from '@/layouts/AuthLayout.vue'
@@ -79,6 +86,7 @@ const form = reactive({
   email: '',
   password: '',
   confirmPassword: '',
+  role: 'STUDENT' as string,
 })
 
 const validateConfirmPassword = (_rule: any, value: string, callback: any) => {
@@ -89,10 +97,12 @@ const validateConfirmPassword = (_rule: any, value: string, callback: any) => {
   }
 }
 
-const rules: FormRules = {
+const idLabel = computed(() => form.role === 'TEACHER' ? '工号' : '学号')
+
+const rules = computed<FormRules>(() => ({
   username: [
-    { required: true, message: '请输入学号', trigger: 'blur' },
-    { pattern: /^\d{8,12}$/, message: '学号为8-12位数字', trigger: 'blur' },
+    { required: true, message: `请输入${idLabel.value}`, trigger: 'blur' },
+    { pattern: /^\d{4,12}$/, message: `${idLabel.value}为4-12位数字`, trigger: 'blur' },
   ],
   realName: [
     { required: true, message: '请输入姓名', trigger: 'blur' },
@@ -115,7 +125,10 @@ const rules: FormRules = {
     { required: true, message: '请确认密码', trigger: 'blur' },
     { validator: validateConfirmPassword, trigger: 'blur' },
   ],
-}
+  role: [
+    { required: true, message: '请选择角色', trigger: 'change' },
+  ],
+}))
 
 watch(activeTab, (tab) => {
   if (tab === 'login') router.push('/login')
@@ -131,7 +144,7 @@ async function handleRegister() {
         username: form.username,
         password: form.password,
         realName: form.realName,
-        role: 'STUDENT',
+        role: form.role,
       })
       ElMessage.success('注册成功，已自动登录')
       router.push('/papers')

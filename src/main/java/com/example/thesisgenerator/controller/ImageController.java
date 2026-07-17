@@ -19,7 +19,7 @@ import java.util.Map;
  * 图片上传与访问 REST 控制器
  */
 @RestController
-@RequestMapping("/api/images")
+@RequestMapping("/api/v1/images")
 @RequiredArgsConstructor
 public class ImageController {
 
