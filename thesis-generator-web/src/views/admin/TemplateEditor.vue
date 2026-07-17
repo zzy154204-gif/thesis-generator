@@ -117,10 +117,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
-import CoverConfig from '@/components/admin/TemplateEditor/CoverConfig.vue'
-
-// 如果组件还不存在，创建占位或临时注释
-// import CoverConfig from '@/components/admin/TemplateEditor/CoverConfig.vue'
+import CoverConfig from '@/views/admin/templateEditor/CoverConfig.vue'
 
 const router = useRouter()
 const route = useRoute()
