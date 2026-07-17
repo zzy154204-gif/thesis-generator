@@ -89,7 +89,7 @@ async function toggleStatus(item: any) {
   }
 }
 
-function handlePreviewTemplate(item: any) {
+async function handlePreviewTemplate(item: any) {
   try {
     // 调用预览接口
     const res = await previewTemplate(item.id)
