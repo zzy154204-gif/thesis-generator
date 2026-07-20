@@ -74,6 +74,8 @@
               :references="references"
               :show-dialog="showRefDialog"
               @add="addReference"
+              @update="updateReference"
+              @delete-ref="deleteReference"
               @insert-at-cursor="insertRefAtCursor"
               @show-add-dialog="showRefDialog = true"
               @update:show-dialog="showRefDialog = $event"
@@ -142,6 +144,7 @@ import { saveDraft, getDraft } from '@/api/draft'
 import { createSection, saveSection, deleteSection, updateSectionsOrder } from '@/api/section'
 import { updatePaper } from '@/api/paper'
 import { submitExport, getExportStatus, downloadExport } from '@/api/export'
+import { getReferences, createReference, updateReference as updateRefApi, deleteReference as deleteRefApi } from '@/api/reference'
 
 const router = useRouter()
 const route = useRoute()
@@ -394,13 +397,49 @@ function insertRefAtCursor(ref: Reference) {
   ElMessage.success('引用标记已插入')
 }
 
-function addReference(refData: Omit<Reference, 'id' | 'thesisId'>) {
-  references.value.push({
-    id: Date.now(),
-    thesisId: 0,
-    ...refData,
-  })
-  ElMessage.success('文献已添加')
+/** 加载参考文献列表 */
+async function loadReferences() {
+  try {
+    const res = await getReferences()
+    references.value = res.data ?? []
+  } catch {
+    // 后端未就绪时静默
+  }
+}
+
+async function addReference(refData: Omit<Reference, 'id' | 'thesisId'>) {
+  try {
+    const res = await createReference(refData)
+    references.value.push(res.data)
+    ElMessage.success('文献已添加')
+  } catch {
+    // 后端未就绪时本地添加
+    references.value.push({ id: Date.now(), thesisId: 0, ...refData } as Reference)
+    ElMessage.warning('文献已本地添加，后端未持久化')
+  }
+}
+
+async function updateReference(ref: Reference) {
+  try {
+    await updateRefApi(ref.id, ref)
+    const idx = references.value.findIndex((r) => r.id === ref.id)
+    if (idx !== -1) references.value[idx] = ref
+    ElMessage.success('文献已更新')
+  } catch {
+    const idx = references.value.findIndex((r) => r.id === ref.id)
+    if (idx !== -1) references.value[idx] = ref
+    ElMessage.warning('文献已本地更新，后端未持久化')
+  }
+}
+
+async function deleteReference(ref: Reference) {
+  try {
+    await deleteRefApi(ref.id)
+  } catch {
+    // 后端未就绪时继续删除本地
+  }
+  references.value = references.value.filter((r) => r.id !== ref.id)
+  ElMessage.success('文献已删除')
 }
 
 // --- 面板缩放 ---
@@ -495,6 +534,7 @@ onMounted(async () => {
   if (paperId) {
     await paperStore.fetchPaper(paperId)
     await paperStore.fetchSections(paperId)
+    loadReferences()
     if (paperStore.sections.length > 0) {
       handleSectionClick(paperStore.sections[0])
     }
