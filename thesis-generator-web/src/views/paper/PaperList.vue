@@ -137,6 +137,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus, Edit, View, Delete, Grid, List } from '@element-plus/icons-vue'
+import { storeToRefs } from 'pinia'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { usePaperStore } from '@/stores/paper'
 import { deletePaper } from '@/api/paper'
@@ -144,7 +145,7 @@ import type { Thesis } from '@/types/api'
 
 const router = useRouter()
 const paperStore = usePaperStore()
-const { paperList } = paperStore
+const { paperList } = storeToRefs(paperStore)
 
 const loading = ref(true)
 const searchKeyword = ref('')
