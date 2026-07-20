@@ -141,6 +141,7 @@ import { uploadImage } from '@/api/image'
 import { saveDraft, getDraft } from '@/api/draft'
 import { createSection, saveSection, deleteSection, updateSectionsOrder } from '@/api/section'
 import { updatePaper } from '@/api/paper'
+import { submitExport, getExportStatus, downloadExport } from '@/api/export'
 
 const router = useRouter()
 const route = useRoute()
@@ -441,12 +442,48 @@ function handlePreview() {
 
 async function handleExport() {
   exporting.value = true
+  const paperId = Number(route.params.paperId)
   try {
-    await new Promise((r) => setTimeout(r, 2000))
-    ElMessage.success('导出成功，文件下载中...')
+    const res = await submitExport(paperId, {
+      format: exportFormat.value as 'PDF' | 'DOCX',
+      scope: exportScope.value as 'all' | 'custom',
+      options: {
+        cover: exportOptions.cover,
+        toc: exportOptions.toc,
+        references: exportOptions.references,
+      },
+    })
+    const taskId = res.data.taskId
+    ElMessage.success('导出任务已提交，正在生成文件...')
+
+    // 轮询直到完成
+    let downloadUrl = ''
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      const statusRes = await getExportStatus(taskId)
+      const task = statusRes.data
+      if (task.status === 'COMPLETED') {
+        const dlRes = await downloadExport(taskId)
+        downloadUrl = dlRes.data.downloadUrl
+        break
+      }
+      if (task.status === 'FAILED') {
+        throw new Error(task.errorMessage || '导出失败')
+      }
+    }
+    if (!downloadUrl) throw new Error('导出超时，请稍后重试')
+
+    const a = document.createElement('a')
+    a.href = downloadUrl
+    a.download = `${paper.value?.title || '论文'}.${exportFormat.value.toLowerCase()}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+
+    ElMessage.success('导出完成，文件开始下载')
     showExportDialog.value = false
-  } catch {
-    ElMessage.error('导出失败')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '导出失败')
   } finally {
     exporting.value = false
   }
