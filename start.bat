@@ -20,6 +20,6 @@ echo ============================================
 start /B "" "C:\Program Files\Redis\redis-server.exe" 2>nul
 
 :: 启动 Spring Boot
-mvnw.cmd spring-boot:run
+mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
 
 pause

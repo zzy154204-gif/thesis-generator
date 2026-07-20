@@ -52,6 +52,7 @@
           :current-heading="currentHeading"
           @set-heading="setHeading"
           @insert-reference="insertReference"
+          @upload-image="handleImageUpload"
         />
 
         <div class="editor-content" ref="editorContainer">
@@ -136,6 +137,9 @@ import type { ThesisSection, Reference, Template } from '@/types/api'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
+import Image from '@tiptap/extension-image'
+import { uploadImage } from '@/api/image'
+import { saveDraft, getDraft } from '@/api/draft'
 
 const router = useRouter()
 const route = useRoute()
@@ -146,7 +150,56 @@ const paper = computed(() => paperStore.currentPaper)
 
 const editor = useEditor({
   content: '',
-  extensions: [StarterKit, Underline],
+  extensions: [
+    StarterKit,
+    Underline,
+    Image.configure({ inline: true, allowBase64: false }),
+  ],
+})
+
+// ===== 自动保存 =====
+let autoSaveTimer: ReturnType<typeof setInterval> | null = null
+const AUTO_SAVE_INTERVAL = 15000 // 15秒
+
+function startAutoSave() {
+  stopAutoSave()
+  autoSaveTimer = setInterval(async () => {
+    if (!editorStore.isDirty || !currentSectionId.value || !editor.value) return
+    editorStore.markSaving()
+    try {
+      const paperId = Number(route.params.paperId)
+      await saveDraft(paperId, currentSectionId.value, editor.value.getHTML())
+      editorStore.markSaved()
+    } catch {
+      editorStore.markDirty()
+    }
+  }, AUTO_SAVE_INTERVAL)
+}
+
+function stopAutoSave() {
+  if (autoSaveTimer) { clearInterval(autoSaveTimer); autoSaveTimer = null }
+}
+
+// ===== 图片上传 =====
+const imageUploading = ref(false)
+async function handleImageUpload(file: File) {
+  if (!editor.value) return
+  imageUploading.value = true
+  try {
+    const res = await uploadImage(file)
+    const url = `/api/v1/images/${res.data.id}/file`
+    editor.value.chain().focus().setImage({ src: url }).run()
+    editorStore.markDirty()
+  } catch {
+    ElMessage.error('图片上传失败')
+  } finally {
+    imageUploading.value = false
+  }
+}
+
+// 监听编辑器内容变化，标记为脏状态
+watch(() => editor.value?.getHTML(), () => {
+  if (editor.value) editorStore.markDirty()
 })
 
 const editingTitle = ref(false)
@@ -322,9 +375,11 @@ onMounted(async () => {
       handleSectionClick(paperStore.sections[0])
     }
   }
+  startAutoSave()
 })
 
 onBeforeUnmount(() => {
+  stopAutoSave()
   editor.value?.destroy()
 })
 </script>
