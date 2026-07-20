@@ -31,10 +31,14 @@
     </el-button-group>
 
     <el-button size="small" plain @click="$emit('insertReference')">📎 插入引用</el-button>
+
+    <input ref="imageInput" type="file" accept="image/*" style="display:none" @change="onImageSelect" />
+    <el-button size="small" plain @click="($refs.imageInput as HTMLInputElement)?.click()">🖼 插入图片</el-button>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { Editor } from '@tiptap/vue-3'
 
 defineProps<{
@@ -42,10 +46,22 @@ defineProps<{
   currentHeading: string
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   setHeading: [level: string]
   insertReference: []
+  uploadImage: [file: File]
 }>()
+
+const imageInput = ref<HTMLInputElement>()
+
+function onImageSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) {
+    emit('uploadImage', file)
+    input.value = '' // reset so same file can be re-selected
+  }
+}
 </script>
 
 <style scoped lang="scss">
