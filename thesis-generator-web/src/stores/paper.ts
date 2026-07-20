@@ -20,8 +20,13 @@ export const usePaperStore = defineStore('paper', () => {
   }
 
   async function fetchSections(paperId: number) {
-    const res = await getSections(paperId)
-    sections.value = res.data || []
+    try {
+      const res = await getSections(paperId)
+      sections.value = res.data || []
+    } catch {
+      // 后端 SectionController 尚未实现（B 负责），暂时使用空列表
+      sections.value = []
+    }
   }
 
   function clearCurrent() {
