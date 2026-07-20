@@ -49,20 +49,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { useAuthStore } from '@/stores/auth'
-// TODO: 待后端实现 PUT /auth/profile 和 PUT /auth/password 后对接
-import request from '@/api/request'
-async function updateProfile(data: Record<string, unknown>): Promise<void> {
-  // TODO: PUT /auth/profile
-  await request.put('/auth/profile', data)
-}
-async function changePwdApi(data: { oldPassword: string; newPassword: string }): Promise<void> {
-  // TODO: PUT /auth/password
-  await request.put('/auth/password', data)
-}
+import { updateProfile as updateProfileApi, changePassword as changePwdApi } from '@/api/auth'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const authStore = useAuthStore()
@@ -74,6 +65,14 @@ const infoForm = reactive({
   email: '',
   phone: '',
 })
+
+onMounted(async () => {
+  await authStore.fetchProfile()
+  // 用服务端最新数据回填表单
+  if (authStore.user) {
+    infoForm.realName = authStore.user.realName || ''
+  }
+})
 const infoFormRef = ref<FormInstance>()
 const infoRules: FormRules = {
   realName: [{ required: true, min: 2, max: 20, message: '姓名为2-20个字符', trigger: 'blur' }],
@@ -84,8 +83,17 @@ async function saveProfile() {
   if (!infoFormRef.value) return
   await infoFormRef.value.validate(async (valid) => {
     if (!valid) return
-    await updateProfile({ realName: infoForm.realName })
-    ElMessage.success('保存成功')
+    try {
+      await updateProfileApi({ realName: infoForm.realName, email: infoForm.email, phone: infoForm.phone })
+      // 更新本地 store 中的用户名
+      if (authStore.user) {
+        authStore.user.realName = infoForm.realName
+        localStorage.setItem('user', JSON.stringify(authStore.user))
+      }
+      ElMessage.success('保存成功')
+    } catch {
+      ElMessage.warning('保存失败，后端接口暂未就绪')
+    }
   })
 }
 
@@ -108,9 +116,13 @@ async function changePassword() {
   if (!pwdFormRef.value) return
   await pwdFormRef.value.validate(async (valid) => {
     if (!valid) return
-    await changePwdApi({ oldPassword: pwdForm.oldPassword, newPassword: pwdForm.newPassword })
-    ElMessage.success('密码修改成功，请重新登录')
-    authStore.logout()
+    try {
+      await changePwdApi({ oldPassword: pwdForm.oldPassword, newPassword: pwdForm.newPassword })
+      ElMessage.success('密码修改成功，请重新登录')
+      authStore.logout()
+    } catch {
+      ElMessage.warning('密码修改失败，后端接口暂未就绪')
+    }
   })
 }
 </script>

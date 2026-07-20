@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as loginApi, register as registerApi, logout as logoutApi } from '@/api/auth'
+import { login as loginApi, register as registerApi, logout as logoutApi, getProfile } from '@/api/auth'
 import { setToken, removeToken, getToken } from '@/utils/token'
 import type { UserInfo, LoginRequest, RegisterRequest } from '@/types/api'
 
@@ -37,10 +37,22 @@ export const useAuthStore = defineStore('auth', () => {
     setAuthFromResponse(res.data)
   }
 
-  // TODO: 待后端实现 GET /auth/profile 后对接
   async function fetchProfile() {
-    // 暂时从 token 解析用户信息，后续对接后端 profile 接口
     if (!token.value) return
+    try {
+      const res = await getProfile()
+      if (res.data) {
+        user.value = {
+          userId: res.data.userId,
+          username: res.data.username,
+          realName: res.data.realName,
+          role: res.data.role,
+        }
+        localStorage.setItem('user', JSON.stringify(user.value))
+      }
+    } catch {
+      // 后端 profile 接口尚未实现时，保持当前用户信息不变
+    }
   }
 
   function logout() {

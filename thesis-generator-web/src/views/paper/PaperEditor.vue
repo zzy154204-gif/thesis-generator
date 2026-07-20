@@ -139,6 +139,8 @@ import Underline from '@tiptap/extension-underline'
 import Image from '@tiptap/extension-image'
 import { uploadImage } from '@/api/image'
 import { saveDraft, getDraft } from '@/api/draft'
+import { createSection, saveSection, deleteSection, updateSectionsOrder } from '@/api/section'
+import { updatePaper } from '@/api/paper'
 
 const router = useRouter()
 const route = useRoute()
@@ -251,7 +253,26 @@ async function addSection(parent?: ThesisSection | null) {
     confirmButtonText: '确定', cancelButtonText: '取消',
   })
   if (!title) return
-  ElMessage.success(`章节"${title}"已添加`)
+  const paperId = Number(route.params.paperId)
+  try {
+    const res = await createSection(paperId, { title, parentId: parent?.id })
+    // 乐观更新本地章节树
+    const newSection: ThesisSection = {
+      id: res.data?.id ?? Date.now(),
+      title,
+      content: '',
+      children: [],
+    }
+    if (parent) {
+      if (!parent.children) parent.children = []
+      parent.children.push(newSection)
+    } else {
+      paperStore.sections.push(newSection)
+    }
+    ElMessage.success(`章节"${title}"已添加`)
+  } catch {
+    ElMessage.warning('后端暂未就绪，章节添加未持久化')
+  }
 }
 
 async function addChildSection(parent: ThesisSection) {
@@ -263,6 +284,14 @@ async function renameSection(node: ThesisSection) {
     confirmButtonText: '确定', inputValue: node.title,
   })
   if (!title) return
+  const paperId = Number(route.params.paperId)
+  try {
+    await saveSection(paperId, node.id, { title })
+    node.title = title
+    ElMessage.success('重命名成功')
+  } catch {
+    ElMessage.warning('后端暂未就绪，重命名未持久化')
+  }
 }
 
 async function deleteSection(node: ThesisSection) {
@@ -270,19 +299,78 @@ async function deleteSection(node: ThesisSection) {
   const msg = hasChildren ? `将同时删除${node.children!.length}个子章节，确定删除"${node.title}"吗？` : `确定删除"${node.title}"吗？`
   try {
     await ElMessageBox.confirm(msg, '确认删除', { type: 'warning' })
+    const paperId = Number(route.params.paperId)
+    try {
+      await deleteSection(paperId, node.id)
+    } catch {
+      // 后端接口未就绪时继续删除本地数据
+    }
+    // 从本地章节树中移除
+    removeSectionFromTree(paperStore.sections, node.id)
+    // 如果删除的是当前编辑的章节，清空编辑器
+    if (currentSectionId.value === node.id) {
+      currentSectionId.value = null
+      editor.value?.commands.setContent('')
+    }
     ElMessage.success('章节已删除')
-  } catch {}
+  } catch {
+    // 用户取消删除
+  }
 }
 
-function handleDragEnd() {
-  // TODO: 调用 API 更新排序
+/** 递归从章节树中移除指定节点 */
+function removeSectionFromTree(nodes: ThesisSection[], targetId: number): boolean {
+  const idx = nodes.findIndex((n) => n.id === targetId)
+  if (idx !== -1) {
+    nodes.splice(idx, 1)
+    return true
+  }
+  for (const node of nodes) {
+    if (node.children && removeSectionFromTree(node.children, targetId)) return true
+  }
+  return false
+}
+
+/** 递归展平章节树，收集 ID 顺序 */
+function flattenSectionIds(nodes: ThesisSection[]): number[] {
+  const ids: number[] = []
+  function walk(items: ThesisSection[]) {
+    for (const item of items) {
+      ids.push(item.id)
+      if (item.children && item.children.length > 0) {
+        walk(item.children)
+      }
+    }
+  }
+  walk(nodes)
+  return ids
+}
+
+async function handleDragEnd() {
+  const paperId = Number(route.params.paperId)
+  const orderedIds = flattenSectionIds(paperStore.sections)
+  try {
+    await updateSectionsOrder(paperId, orderedIds)
+  } catch {
+    // 后端章节排序 API 尚未就绪时静默失败
+  }
 }
 
 // --- 标题编辑 ---
-function saveTitle() {
+async function saveTitle() {
   editingTitle.value = false
   if (editTitleText.value && editTitleText.value !== paper.value?.title) {
-    // TODO: 调用 API 更新标题
+    try {
+      const paperId = Number(route.params.paperId)
+      await updatePaper(paperId, { title: editTitleText.value })
+      // 更新本地 store 中的标题
+      if (paperStore.currentPaper) {
+        paperStore.currentPaper.title = editTitleText.value
+      }
+      ElMessage.success('标题已更新')
+    } catch {
+      // 错误已在拦截器中处理
+    }
   }
 }
 
