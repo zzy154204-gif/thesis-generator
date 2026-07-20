@@ -49,21 +49,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { useAuthStore } from '@/stores/auth'
-// TODO: 待后端实现 PUT /auth/profile 和 PUT /auth/password 后对接
 import request from '@/api/request'
+
 async function updateProfile(data: Record<string, unknown>): Promise<void> {
-  // TODO: PUT /auth/profile
   await request.put('/auth/profile', data)
 }
 async function changePwdApi(data: { oldPassword: string; newPassword: string }): Promise<void> {
-  // TODO: PUT /auth/password
   await request.put('/auth/password', data)
 }
-import type { FormInstance, FormRules } from 'element-plus'
 
 const authStore = useAuthStore()
 const activeTab = ref('info')
@@ -73,6 +71,16 @@ const infoForm = reactive({
   realName: authStore.user?.realName || '',
   email: '',
   phone: '',
+})
+
+onMounted(async () => {
+  try {
+    const res = await request.get('/auth/profile')
+    const profile = res.data as any
+    infoForm.realName = profile.realName || authStore.user?.realName || ''
+    infoForm.email = profile.email || ''
+    infoForm.phone = profile.phone || ''
+  } catch { /* 加载失败使用默认值 */ }
 })
 const infoFormRef = ref<FormInstance>()
 const infoRules: FormRules = {

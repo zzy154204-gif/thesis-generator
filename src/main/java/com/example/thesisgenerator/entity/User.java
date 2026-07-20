@@ -28,6 +28,12 @@ public class User {
     @Column(name = "college_id")
     private Long collegeId;
 
+    @Column(length = 100)
+    private String email;
+
+    @Column(length = 20)
+    private String phone;
+
     @Column(nullable = false)
     private Boolean enabled = true;
 

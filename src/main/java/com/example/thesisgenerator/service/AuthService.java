@@ -97,4 +97,46 @@ public class AuthService {
             redisTemplate.delete("token:" + userId);
         }
     }
+
+    /**
+     * 获取用户信息
+     */
+    public User getProfile(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(404, "用户不存在"));
+    }
+
+    /**
+     * 修改个人信息（姓名、邮箱、手机号）
+     */
+    public User updateProfile(Long userId, String realName, String email, String phone) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(404, "用户不存在"));
+        if (realName != null && !realName.isBlank()) {
+            user.setRealName(realName);
+        }
+        if (email != null) {
+            user.setEmail(email);
+        }
+        if (phone != null) {
+            user.setPhone(phone);
+        }
+        return userRepository.save(user);
+    }
+
+    /**
+     * 修改密码
+     */
+    public void changePassword(Long userId, String oldPassword, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(404, "用户不存在"));
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            throw new BusinessException(400, "原密码错误");
+        }
+        if (newPassword == null || newPassword.length() < 6) {
+            throw new BusinessException(400, "新密码长度不能少于6位");
+        }
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+    }
 }

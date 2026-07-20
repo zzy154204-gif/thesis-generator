@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS sys_user (
     real_name VARCHAR(50) NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'STUDENT', 'TEACHER')),
     college_id BIGINT REFERENCES sys_college(id),
+    email VARCHAR(100),
+    phone VARCHAR(20),
     enabled BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
