@@ -1,6 +1,5 @@
 <template>
-  <DefaultLayout>
-    <div class="template-list">
+  <div class="template-list">
       <!-- 顶栏 -->
       <div class="page-header">
         <h3>📋 模板管理</h3>
@@ -48,7 +47,7 @@
         </div>
       </div>
     </div>
-  </DefaultLayout>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -56,7 +55,6 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { getAdminTemplates, toggleTemplateStatus } from '@/api/template'
 
 const router = useRouter()

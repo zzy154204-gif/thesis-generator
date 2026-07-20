@@ -1,6 +1,5 @@
 <template>
-  <DefaultLayout>
-    <div class="template-editor">
+  <div class="template-editor">
       <!-- 顶栏 -->
       <div class="editor-header">
         <el-button text @click="router.back()">
@@ -108,7 +107,7 @@
         </el-tabs>
       </div>
     </div>
-  </DefaultLayout>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -116,7 +115,6 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import CoverConfig from '@/views/admin/templateEditor/CoverConfig.vue'
 import { getColleges } from '@/api/college'
 import { createTemplate, updateTemplate, getAdminTemplate } from '@/api/template'
