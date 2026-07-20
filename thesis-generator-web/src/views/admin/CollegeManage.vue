@@ -91,9 +91,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
-
-// 导入 API（待实现）
-// import { collegeApi } from '@/api/college'
+import { getColleges, createCollege, updateCollege, deleteCollege } from '@/api/college'
 
 // --- 状态 ---
 const loading = ref(false)
@@ -128,17 +126,16 @@ const dialogTitle = computed(() => isEdit.value ? '编辑学院' : '新增学院
 async function fetchData() {
   loading.value = true
   try {
-    // TODO: 调用真实 API
-    // const res = await collegeApi.getList({ page: page.value, size: pageSize.value, keyword: keyword.value })
-    // tableData.value = res.data.list
-    // total.value = res.data.total
-
-    // 模拟数据
-    tableData.value = [
-      { id: 1, name: '计算机学院', code: 'CS', templateCount: 3, createdAt: '2026-01-01T00:00:00' },
-      { id: 2, name: '电子工程学院', code: 'EE', templateCount: 2, createdAt: '2026-01-02T00:00:00' },
-    ]
-    total.value = 2
+    const res = await getColleges()
+    const all = res.data || []
+    // 关键字过滤
+    const filtered = keyword.value
+      ? all.filter((c: any) => c.name?.includes(keyword.value) || c.code?.includes(keyword.value))
+      : all
+    total.value = filtered.length
+    // 简易分页
+    const from = (page.value - 1) * pageSize.value
+    tableData.value = filtered.slice(from, from + pageSize.value)
   } catch {
     ElMessage.error('加载数据失败')
   } finally {
@@ -152,7 +149,7 @@ function openDialog(row?: any) {
   if (row) {
     form.id = row.id
     form.name = row.name
-    form.code = row.code
+    form.code = row.code || ''
   } else {
     form.id = 0
     form.name = ''
@@ -169,10 +166,10 @@ async function handleSubmit() {
     submitLoading.value = true
     try {
       if (isEdit.value) {
-        // TODO: await collegeApi.update(form.id, { name: form.name, code: form.code })
+        await updateCollege(form.id, { name: form.name, code: form.code })
         ElMessage.success('修改成功')
       } else {
-        // TODO: await collegeApi.create({ name: form.name, code: form.code })
+        await createCollege({ name: form.name, code: form.code })
         ElMessage.success('新增成功')
       }
       dialogVisible.value = false
@@ -186,16 +183,17 @@ async function handleSubmit() {
 }
 
 // --- 删除 ---
-function handleDelete(row: any) {
-  ElMessageBox.confirm(
-    `确定要删除【${row.name}】吗？此操作不可恢复。`,
-    '警告',
-    { confirmButtonText: '确定删除', type: 'warning' }
-  ).then(async () => {
-    // TODO: await collegeApi.delete(row.id)
+async function handleDelete(row: any) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除【${row.name}】吗？此操作不可恢复。`,
+      '警告',
+      { confirmButtonText: '确定删除', type: 'warning' }
+    )
+    await deleteCollege(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  }).catch(() => {})
+  } catch {}
 }
 
 // --- 搜索重置 ---

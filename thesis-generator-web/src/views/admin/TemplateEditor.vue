@@ -118,6 +118,7 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import CoverConfig from '@/views/admin/templateEditor/CoverConfig.vue'
+import { createTemplate, updateTemplate, getAdminTemplate } from '@/api/template'
 
 const router = useRouter()
 const route = useRoute()
@@ -163,15 +164,22 @@ async function handleSave() {
   saving.value = true
   try {
     const coverConfig = coverConfigRef.value?.getConfig()
-    // TODO: 调用保存 API
-    // await templateApi.save({
-    //   ...form,
-    //   styles,
-    //   structure,
-    //   coverConfig,
-    // })
-    await new Promise((r) => setTimeout(r, 1000))
+    const data = {
+      name: form.name,
+      type: form.type,
+      collegeId: form.collegeId,
+      description: form.description,
+      coverConfig: coverConfig || [],
+      styles: { font: '宋体', fontSize: '12pt', lineHeight: '1.5' },
+      structure,
+    }
+    if (isNew.value) {
+      await createTemplate({ ...data, collegeId: Number(data.collegeId) || 0 })
+    } else {
+      await updateTemplate(Number(route.params.id), { ...data, collegeId: Number(data.collegeId) || 0 })
+    }
     ElMessage.success('保存成功')
+    router.push('/admin/templates')
   } catch {
     ElMessage.error('保存失败')
   } finally {
@@ -187,7 +195,16 @@ onMounted(async () => {
   const id = route.params.id
   if (id && id !== 'new') {
     isNew.value = false
-    // TODO: 加载模板数据
+    try {
+      const res = await getAdminTemplate(Number(id))
+      const t = res.data as any
+      form.name = t.name
+      form.type = t.type
+      form.collegeId = t.collegeId
+      form.description = t.description || ''
+    } catch {
+      ElMessage.error('加载模板数据失败')
+    }
   }
 })
 </script>

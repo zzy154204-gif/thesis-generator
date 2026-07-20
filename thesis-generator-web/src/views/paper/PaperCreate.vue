@@ -92,6 +92,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { createPaper } from '@/api/paper'
+import { getColleges } from '@/api/college'
+import { getAvailableTemplates } from '@/api/template'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { College, Template } from '@/types/api'
 
@@ -156,8 +158,17 @@ async function handleCreate() {
   }
 }
 
-onMounted(() => {
-  // TODO: 从后端获取学院列表和模板列表
+onMounted(async () => {
+  try {
+    const [collegeRes, templateRes] = await Promise.all([
+      getColleges(),
+      getAvailableTemplates(),
+    ])
+    colleges.value = collegeRes.data || []
+    templates.value = templateRes.data || []
+  } catch {
+    // 加载失败不影响创建流程
+  }
 })
 </script>
 

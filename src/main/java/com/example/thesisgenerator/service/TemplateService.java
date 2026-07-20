@@ -111,6 +111,55 @@ public class TemplateService {
         return versionRepository.save(version);
     }
 
+    // ===== 管理员专用 =====
+
+    public List<Template> findAllAdmin(String type, Long collegeId, String status, String keyword) {
+        List<Template> all;
+        if (type != null && collegeId != null) {
+            all = templateRepository.findByCollegeIdAndTypeAndEnabledTrue(collegeId, type);
+        } else if (type != null) {
+            all = templateRepository.findByType(type);
+        } else if (collegeId != null) {
+            all = templateRepository.findByCollegeIdAndEnabledTrue(collegeId);
+        } else {
+            all = templateRepository.findAll();
+        }
+
+        // 状态筛选
+        if (status != null) {
+            boolean enabled = "ENABLED".equalsIgnoreCase(status);
+            all = all.stream().filter(t -> t.getEnabled() == enabled).toList();
+        }
+
+        // 关键字搜索
+        if (keyword != null && !keyword.isBlank()) {
+            String kw = keyword.toLowerCase();
+            all = all.stream()
+                    .filter(t -> t.getName() != null && t.getName().toLowerCase().contains(kw))
+                    .toList();
+        }
+
+        return all;
+    }
+
+    @Transactional
+    public Template toggleStatus(Long id, String status) {
+        Template template = findById(id);
+        template.setEnabled("ENABLED".equalsIgnoreCase(status));
+        return templateRepository.save(template);
+    }
+
+    @Transactional
+    public Template duplicate(Long id) {
+        Template source = findById(id);
+        Template copy = new Template();
+        copy.setName(source.getName() + " (副本)");
+        copy.setType(source.getType());
+        copy.setCollegeId(source.getCollegeId());
+        copy.setEnabled(false);
+        return create(copy);
+    }
+
     private String incrementVersion(String current) {
         String[] parts = current.split("\\.");
         int major = Integer.parseInt(parts[0]);

@@ -57,6 +57,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
+import { getAdminTemplates, toggleTemplateStatus } from '@/api/template'
 
 const router = useRouter()
 const loading = ref(false)
@@ -66,41 +67,12 @@ const tableData = ref<any[]>([])
 async function fetchData() {
   loading.value = true
   try {
-    // TODO: 调用真实 API
-    // const res = await templateApi.getList({ type: activeType.value })
-    // tableData.value = res.data
-
-    // 模拟数据
-    await new Promise((r) => setTimeout(r, 500))
-    tableData.value = [
-      {
-        id: 1,
-        name: '计算机学院毕业论文模板',
-        type: 'GRADUATION',
-        version: '2.1.0',
-        status: 'ENABLED',
-        collegeName: '计算机学院',
-        description: '适用于计算机科学与技术专业毕业论文',
-      },
-      {
-        id: 2,
-        name: '电子学院课程论文模板',
-        type: 'COURSE',
-        version: '1.0.0',
-        status: 'DISABLED',
-        collegeName: '电子工程学院',
-        description: '适用于电子类课程论文',
-      },
-      {
-        id: 3,
-        name: '项目设计报告模板',
-        type: 'PROJECT',
-        version: '1.2.0',
-        status: 'ENABLED',
-        collegeName: '全局',
-        description: '适用于项目设计类论文',
-      },
-    ]
+    const res = await getAdminTemplates({ type: activeType.value as any })
+    tableData.value = (res.data || []).map((t: any) => ({
+      ...t,
+      version: t.version || '1.0',
+      status: t.enabled ? 'ENABLED' : 'DISABLED',
+    }))
   } catch {
     ElMessage.error('加载数据失败')
   } finally {
@@ -111,7 +83,7 @@ async function fetchData() {
 async function toggleStatus(item: any) {
   const newStatus = item.status === 'ENABLED' ? 'DISABLED' : 'ENABLED'
   try {
-    // TODO: await templateApi.updateStatus(item.id, newStatus)
+    await toggleTemplateStatus(item.id, newStatus)
     item.status = newStatus
     ElMessage.success(`已${newStatus === 'ENABLED' ? '启用' : '停用'}`)
   } catch {
@@ -120,7 +92,6 @@ async function toggleStatus(item: any) {
 }
 
 function previewTemplate(item: any) {
-  // TODO: 打开预览弹窗
   ElMessage.info('预览功能开发中')
 }
 

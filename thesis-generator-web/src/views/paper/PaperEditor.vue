@@ -38,7 +38,7 @@
         @add-section="addSection"
         @add-child-section="addChildSection"
         @rename-section="renameSection"
-        @delete-section="deleteSection"
+        @delete-section="deleteSectionNode"
         @drag-end="handleDragEnd"
       />
 
@@ -131,6 +131,8 @@ import SectionTree from '@/components/editor/SectionTree.vue'
 import ReferencePanel from '@/components/editor/ReferencePanel.vue'
 import { useEditorStore } from '@/stores/editor'
 import { usePaperStore } from '@/stores/paper'
+import { createSection, deleteSection, saveSection, updateSectionsOrder } from '@/api/section'
+import { updatePaper } from '@/api/paper'
 import type { ThesisSection, Reference, Template } from '@/types/api'
 
 import { useEditor, EditorContent } from '@tiptap/vue-3'
@@ -189,9 +191,26 @@ const currentHeading = computed(() => {
 // --- 章节操作 ---
 function handleSectionClick(data: ThesisSection) {
   if (currentSectionId.value === data.id) return
+  // 保存当前章节内容
+  if (currentSectionId.value && editor.value) {
+    saveCurrentSection()
+  }
   currentSectionId.value = data.id
   editorStore.setCurrentSection(data.id)
   editor.value?.commands.setContent(data.content || '')
+}
+
+async function saveCurrentSection() {
+  if (!currentSectionId.value || !editor.value) return
+  const paperId = Number(route.params.paperId)
+  try {
+    await saveSection(paperId, currentSectionId.value, {
+      content: editor.value.getHTML(),
+    })
+    editorStore.markSaved()
+  } catch {
+    // 静默失败，不影响编辑体验
+  }
 }
 
 async function addSection(parent?: ThesisSection | null) {
@@ -199,7 +218,15 @@ async function addSection(parent?: ThesisSection | null) {
     confirmButtonText: '确定', cancelButtonText: '取消',
   })
   if (!title) return
-  ElMessage.success(`章节"${title}"已添加`)
+  const paperId = Number(route.params.paperId)
+  try {
+    const res = await createSection(paperId, { title, parentId: parent?.id })
+    ElMessage.success(`章节"${title}"已添加`)
+    await paperStore.fetchSections(paperId)
+    handleSectionClick(res.data as any)
+  } catch {
+    ElMessage.error('添加章节失败')
+  }
 }
 
 async function addChildSection(parent: ThesisSection) {
@@ -211,26 +238,54 @@ async function renameSection(node: ThesisSection) {
     confirmButtonText: '确定', inputValue: node.title,
   })
   if (!title) return
+  const paperId = Number(route.params.paperId)
+  try {
+    await saveSection(paperId, node.id, { title, content: undefined as any })
+    node.title = title
+    ElMessage.success('已重命名')
+  } catch {
+    ElMessage.error('重命名失败')
+  }
 }
 
-async function deleteSection(node: ThesisSection) {
+async function deleteSectionNode(node: ThesisSection) {
   const hasChildren = node.children && node.children.length > 0
   const msg = hasChildren ? `将同时删除${node.children!.length}个子章节，确定删除"${node.title}"吗？` : `确定删除"${node.title}"吗？`
   try {
     await ElMessageBox.confirm(msg, '确认删除', { type: 'warning' })
+    const paperId = Number(route.params.paperId)
+    await deleteSection(paperId, node.id)
+    if (currentSectionId.value === node.id) {
+      currentSectionId.value = null
+      editor.value?.commands.setContent('')
+    }
+    await paperStore.fetchSections(paperId)
     ElMessage.success('章节已删除')
   } catch {}
 }
 
-function handleDragEnd() {
-  // TODO: 调用 API 更新排序
+async function handleDragEnd() {
+  const paperId = Number(route.params.paperId)
+  const orderedIds = paperStore.sections.map((s: any) => s.id)
+  try {
+    await updateSectionsOrder(paperId, orderedIds)
+  } catch {
+    // 静默失败
+  }
 }
 
 // --- 标题编辑 ---
-function saveTitle() {
+async function saveTitle() {
   editingTitle.value = false
   if (editTitleText.value && editTitleText.value !== paper.value?.title) {
-    // TODO: 调用 API 更新标题
+    const paperId = Number(route.params.paperId)
+    try {
+      await updatePaper(paperId, { title: editTitleText.value } as any)
+      paperStore.currentPaper!.title = editTitleText.value
+      ElMessage.success('标题已更新')
+    } catch {
+      ElMessage.error('更新标题失败')
+    }
   }
 }
 
@@ -302,8 +357,10 @@ function handlePreview() {
 async function handleExport() {
   exporting.value = true
   try {
-    await new Promise((r) => setTimeout(r, 2000))
-    ElMessage.success('导出成功，文件下载中...')
+    const paperId = Number(route.params.paperId)
+    const url = `/api/v1/papers/${paperId}/export?format=${exportFormat.value}`
+    window.open(url, '_blank')
+    ElMessage.success('导出请求已发送')
     showExportDialog.value = false
   } catch {
     ElMessage.error('导出失败')
