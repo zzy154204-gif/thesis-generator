@@ -52,6 +52,9 @@ Thumbs.db
 *.log
 *.synctex.gz
 
+### Redis ###
+dump.rdb
+
 ### Log ###
 *.log
 
