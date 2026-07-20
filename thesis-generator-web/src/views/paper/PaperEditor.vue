@@ -1,5 +1,5 @@
 <template>
-  <EditorLayout>
+  <div class="editor-page">
     <!-- 顶部栏 -->
     <div class="editor-topbar">
       <div class="topbar-left">
@@ -118,7 +118,7 @@
         </el-button>
       </template>
     </el-dialog>
-  </EditorLayout>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -126,7 +126,6 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, View, Download } from '@element-plus/icons-vue'
-import EditorLayout from '@/layouts/EditorLayout.vue'
 import EditorToolbar from '@/components/editor/EditorToolbar.vue'
 import SectionTree from '@/components/editor/SectionTree.vue'
 import ReferencePanel from '@/components/editor/ReferencePanel.vue'
@@ -385,6 +384,12 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="scss">
+.editor-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f7fa;
+}
 .editor-topbar {
   height: 48px;
   display: flex;
