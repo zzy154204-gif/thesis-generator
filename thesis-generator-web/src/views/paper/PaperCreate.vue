@@ -22,7 +22,12 @@
               />
             </el-form-item>
             <el-form-item label="所属学院" prop="collegeId">
-              <el-select v-model="form.collegeId" placeholder="请选择学院" class="full-width">
+              <el-select
+                v-model="form.collegeId"
+                placeholder="请选择学院"
+                class="full-width"
+                :loading="loadingColleges"
+              >
                 <el-option
                   v-for="college in colleges"
                   :key="college.id"
@@ -38,7 +43,7 @@
         </div>
 
         <!-- 步骤二：选择模板 -->
-        <div v-else-if="activeStep === 1" class="step-content">
+        <div v-else-if="activeStep === 1" class="step-content" v-loading="loadingTemplates">
           <div v-if="templates.length === 0" class="empty-templates">
             <el-empty description="该学院暂无可用模板" :image-size="120" />
           </div>
@@ -92,12 +97,16 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { createPaper } from '@/api/paper'
+import { getColleges } from '@/api/college'
+import { getTemplates } from '@/api/template'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { College, Template } from '@/types/api'
 
 const router = useRouter()
 const activeStep = ref(0)
 const creating = ref(false)
+const loadingColleges = ref(false)
+const loadingTemplates = ref(false)
 const selectedTemplateId = ref<number | null>(null)
 const baseFormRef = ref<FormInstance>()
 
@@ -116,23 +125,46 @@ const baseRules: FormRules = {
   ],
 }
 
-// 模拟的学院和模板数据（后续从后端获取）
-const colleges = ref<College[]>([
-  { id: 1, name: '计算机科学与技术学院' },
-  { id: 2, name: '电子信息工程学院' },
-  { id: 3, name: '数学与统计学院' },
-])
+const colleges = ref<College[]>([])
+const templates = ref<Template[]>([])
 
-const templates = ref<Template[]>([
-  { id: 1, name: '本科毕业论文标准模板', description: '适用于本科毕业论文，含封面、目录、章节格式', collegeId: 1 },
-  { id: 2, name: '课程设计报告模板', description: '适用于课程设计报告，简洁清晰', collegeId: 1 },
-  { id: 3, name: '硕士学位论文模板', description: '适用于硕士学位论文，格式规范完整', collegeId: 1 },
-])
+/** 加载学院列表 */
+async function loadColleges() {
+  loadingColleges.value = true
+  try {
+    const res = await getColleges()
+    colleges.value = res.data ?? []
+  } catch {
+    // 错误已在拦截器中处理
+  } finally {
+    loadingColleges.value = false
+  }
+}
+
+/** 根据学院加载可用模板 */
+async function loadTemplates(collegeId: number) {
+  loadingTemplates.value = true
+  try {
+    const res = await getTemplates({ collegeId })
+    templates.value = res.data ?? []
+  } catch {
+    // 错误已在拦截器中处理
+  } finally {
+    loadingTemplates.value = false
+  }
+}
 
 function nextStep() {
   if (activeStep.value === 0 && baseFormRef.value) {
     baseFormRef.value.validate((valid) => {
-      if (valid) activeStep.value = 1
+      if (valid) {
+        // 进入模板选择步骤时，按所选学院加载模板
+        if (form.collegeId) {
+          loadTemplates(form.collegeId)
+        }
+        selectedTemplateId.value = null
+        activeStep.value = 1
+      }
     })
   } else if (activeStep.value === 1) {
     activeStep.value = 2
@@ -157,7 +189,7 @@ async function handleCreate() {
 }
 
 onMounted(() => {
-  // TODO: 从后端获取学院列表和模板列表
+  loadColleges()
 })
 </script>
 

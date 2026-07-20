@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as loginApi, register as registerApi, logout as logoutApi } from '@/api/auth'
+import { login as loginApi, register as registerApi, logout as logoutApi, getProfile } from '@/api/auth'
 import { setToken, removeToken, getToken } from '@/utils/token'
 import type { UserInfo, LoginRequest, RegisterRequest } from '@/types/api'
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref<UserInfo | null>(null)
+  // 从 localStorage 恢复用户信息
+  const savedUser = localStorage.getItem('user')
+  const user = ref<UserInfo | null>(savedUser ? JSON.parse(savedUser) : null)
   const token = ref<string | null>(getToken())
 
   const isLoggedIn = computed(() => !!token.value)
@@ -22,6 +24,7 @@ export const useAuthStore = defineStore('auth', () => {
       role: data.role as UserInfo['role'],
     }
     setToken(data.token)
+    localStorage.setItem('user', JSON.stringify(user.value))
   }
 
   async function login(data: LoginRequest) {
@@ -34,10 +37,22 @@ export const useAuthStore = defineStore('auth', () => {
     setAuthFromResponse(res.data)
   }
 
-  // TODO: 待后端实现 GET /auth/profile 后对接
   async function fetchProfile() {
-    // 暂时从 token 解析用户信息，后续对接后端 profile 接口
     if (!token.value) return
+    try {
+      const res = await getProfile()
+      if (res.data) {
+        user.value = {
+          userId: res.data.userId,
+          username: res.data.username,
+          realName: res.data.realName,
+          role: res.data.role,
+        }
+        localStorage.setItem('user', JSON.stringify(user.value))
+      }
+    } catch {
+      // 后端 profile 接口尚未实现时，保持当前用户信息不变
+    }
   }
 
   function logout() {
@@ -45,6 +60,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     user.value = null
     removeToken()
+    localStorage.removeItem('user')
   }
 
   return { user, token, isLoggedIn, isStudent, isTeacher, login, register, fetchProfile, logout }

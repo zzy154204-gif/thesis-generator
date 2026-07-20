@@ -1,5 +1,5 @@
 <template>
-  <EditorLayout>
+  <div class="editor-page">
     <!-- 顶部栏 -->
     <div class="editor-topbar">
       <div class="topbar-left">
@@ -74,6 +74,8 @@
               :references="references"
               :show-dialog="showRefDialog"
               @add="addReference"
+              @update="updateReference"
+              @delete-ref="deleteReference"
               @insert-at-cursor="insertRefAtCursor"
               @show-add-dialog="showRefDialog = true"
               @update:show-dialog="showRefDialog = $event"
@@ -118,7 +120,7 @@
         </el-button>
       </template>
     </el-dialog>
-  </EditorLayout>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -126,7 +128,6 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, View, Download } from '@element-plus/icons-vue'
-import EditorLayout from '@/layouts/EditorLayout.vue'
 import EditorToolbar from '@/components/editor/EditorToolbar.vue'
 import SectionTree from '@/components/editor/SectionTree.vue'
 import ReferencePanel from '@/components/editor/ReferencePanel.vue'
@@ -140,6 +141,10 @@ import Underline from '@tiptap/extension-underline'
 import Image from '@tiptap/extension-image'
 import { uploadImage } from '@/api/image'
 import { saveDraft, getDraft } from '@/api/draft'
+import { createSection, saveSection, deleteSection, updateSectionsOrder } from '@/api/section'
+import { updatePaper } from '@/api/paper'
+import { submitExport, getExportStatus, downloadExport } from '@/api/export'
+import { getReferences, createReference, updateReference as updateRefApi, deleteReference as deleteRefApi } from '@/api/reference'
 
 const router = useRouter()
 const route = useRoute()
@@ -252,7 +257,26 @@ async function addSection(parent?: ThesisSection | null) {
     confirmButtonText: '确定', cancelButtonText: '取消',
   })
   if (!title) return
-  ElMessage.success(`章节"${title}"已添加`)
+  const paperId = Number(route.params.paperId)
+  try {
+    const res = await createSection(paperId, { title, parentId: parent?.id })
+    // 乐观更新本地章节树
+    const newSection: ThesisSection = {
+      id: res.data?.id ?? Date.now(),
+      title,
+      content: '',
+      children: [],
+    }
+    if (parent) {
+      if (!parent.children) parent.children = []
+      parent.children.push(newSection)
+    } else {
+      paperStore.sections.push(newSection)
+    }
+    ElMessage.success(`章节"${title}"已添加`)
+  } catch {
+    ElMessage.warning('后端暂未就绪，章节添加未持久化')
+  }
 }
 
 async function addChildSection(parent: ThesisSection) {
@@ -264,6 +288,14 @@ async function renameSection(node: ThesisSection) {
     confirmButtonText: '确定', inputValue: node.title,
   })
   if (!title) return
+  const paperId = Number(route.params.paperId)
+  try {
+    await saveSection(paperId, node.id, { title })
+    node.title = title
+    ElMessage.success('重命名成功')
+  } catch {
+    ElMessage.warning('后端暂未就绪，重命名未持久化')
+  }
 }
 
 async function deleteSection(node: ThesisSection) {
@@ -271,19 +303,78 @@ async function deleteSection(node: ThesisSection) {
   const msg = hasChildren ? `将同时删除${node.children!.length}个子章节，确定删除"${node.title}"吗？` : `确定删除"${node.title}"吗？`
   try {
     await ElMessageBox.confirm(msg, '确认删除', { type: 'warning' })
+    const paperId = Number(route.params.paperId)
+    try {
+      await deleteSection(paperId, node.id)
+    } catch {
+      // 后端接口未就绪时继续删除本地数据
+    }
+    // 从本地章节树中移除
+    removeSectionFromTree(paperStore.sections, node.id)
+    // 如果删除的是当前编辑的章节，清空编辑器
+    if (currentSectionId.value === node.id) {
+      currentSectionId.value = null
+      editor.value?.commands.setContent('')
+    }
     ElMessage.success('章节已删除')
-  } catch {}
+  } catch {
+    // 用户取消删除
+  }
 }
 
-function handleDragEnd() {
-  // TODO: 调用 API 更新排序
+/** 递归从章节树中移除指定节点 */
+function removeSectionFromTree(nodes: ThesisSection[], targetId: number): boolean {
+  const idx = nodes.findIndex((n) => n.id === targetId)
+  if (idx !== -1) {
+    nodes.splice(idx, 1)
+    return true
+  }
+  for (const node of nodes) {
+    if (node.children && removeSectionFromTree(node.children, targetId)) return true
+  }
+  return false
+}
+
+/** 递归展平章节树，收集 ID 顺序 */
+function flattenSectionIds(nodes: ThesisSection[]): number[] {
+  const ids: number[] = []
+  function walk(items: ThesisSection[]) {
+    for (const item of items) {
+      ids.push(item.id)
+      if (item.children && item.children.length > 0) {
+        walk(item.children)
+      }
+    }
+  }
+  walk(nodes)
+  return ids
+}
+
+async function handleDragEnd() {
+  const paperId = Number(route.params.paperId)
+  const orderedIds = flattenSectionIds(paperStore.sections)
+  try {
+    await updateSectionsOrder(paperId, orderedIds)
+  } catch {
+    // 后端章节排序 API 尚未就绪时静默失败
+  }
 }
 
 // --- 标题编辑 ---
-function saveTitle() {
+async function saveTitle() {
   editingTitle.value = false
   if (editTitleText.value && editTitleText.value !== paper.value?.title) {
-    // TODO: 调用 API 更新标题
+    try {
+      const paperId = Number(route.params.paperId)
+      await updatePaper(paperId, { title: editTitleText.value })
+      // 更新本地 store 中的标题
+      if (paperStore.currentPaper) {
+        paperStore.currentPaper.title = editTitleText.value
+      }
+      ElMessage.success('标题已更新')
+    } catch {
+      // 错误已在拦截器中处理
+    }
   }
 }
 
@@ -306,13 +397,49 @@ function insertRefAtCursor(ref: Reference) {
   ElMessage.success('引用标记已插入')
 }
 
-function addReference(refData: Omit<Reference, 'id' | 'thesisId'>) {
-  references.value.push({
-    id: Date.now(),
-    thesisId: 0,
-    ...refData,
-  })
-  ElMessage.success('文献已添加')
+/** 加载参考文献列表 */
+async function loadReferences() {
+  try {
+    const res = await getReferences()
+    references.value = res.data ?? []
+  } catch {
+    // 后端未就绪时静默
+  }
+}
+
+async function addReference(refData: Omit<Reference, 'id' | 'thesisId'>) {
+  try {
+    const res = await createReference(refData)
+    references.value.push(res.data)
+    ElMessage.success('文献已添加')
+  } catch {
+    // 后端未就绪时本地添加
+    references.value.push({ id: Date.now(), thesisId: 0, ...refData } as Reference)
+    ElMessage.warning('文献已本地添加，后端未持久化')
+  }
+}
+
+async function updateReference(ref: Reference) {
+  try {
+    await updateRefApi(ref.id, ref)
+    const idx = references.value.findIndex((r) => r.id === ref.id)
+    if (idx !== -1) references.value[idx] = ref
+    ElMessage.success('文献已更新')
+  } catch {
+    const idx = references.value.findIndex((r) => r.id === ref.id)
+    if (idx !== -1) references.value[idx] = ref
+    ElMessage.warning('文献已本地更新，后端未持久化')
+  }
+}
+
+async function deleteReference(ref: Reference) {
+  try {
+    await deleteRefApi(ref.id)
+  } catch {
+    // 后端未就绪时继续删除本地
+  }
+  references.value = references.value.filter((r) => r.id !== ref.id)
+  ElMessage.success('文献已删除')
 }
 
 // --- 面板缩放 ---
@@ -354,12 +481,48 @@ function handlePreview() {
 
 async function handleExport() {
   exporting.value = true
+  const paperId = Number(route.params.paperId)
   try {
-    await new Promise((r) => setTimeout(r, 2000))
-    ElMessage.success('导出成功，文件下载中...')
+    const res = await submitExport(paperId, {
+      format: exportFormat.value as 'PDF' | 'DOCX',
+      scope: exportScope.value as 'all' | 'custom',
+      options: {
+        cover: exportOptions.cover,
+        toc: exportOptions.toc,
+        references: exportOptions.references,
+      },
+    })
+    const taskId = res.data.taskId
+    ElMessage.success('导出任务已提交，正在生成文件...')
+
+    // 轮询直到完成
+    let downloadUrl = ''
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      const statusRes = await getExportStatus(taskId)
+      const task = statusRes.data
+      if (task.status === 'COMPLETED') {
+        const dlRes = await downloadExport(taskId)
+        downloadUrl = dlRes.data.downloadUrl
+        break
+      }
+      if (task.status === 'FAILED') {
+        throw new Error(task.errorMessage || '导出失败')
+      }
+    }
+    if (!downloadUrl) throw new Error('导出超时，请稍后重试')
+
+    const a = document.createElement('a')
+    a.href = downloadUrl
+    a.download = `${paper.value?.title || '论文'}.${exportFormat.value.toLowerCase()}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+
+    ElMessage.success('导出完成，文件开始下载')
     showExportDialog.value = false
-  } catch {
-    ElMessage.error('导出失败')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '导出失败')
   } finally {
     exporting.value = false
   }
@@ -371,6 +534,7 @@ onMounted(async () => {
   if (paperId) {
     await paperStore.fetchPaper(paperId)
     await paperStore.fetchSections(paperId)
+    loadReferences()
     if (paperStore.sections.length > 0) {
       handleSectionClick(paperStore.sections[0])
     }
@@ -385,6 +549,12 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="scss">
+.editor-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f7fa;
+}
 .editor-topbar {
   height: 48px;
   display: flex;
