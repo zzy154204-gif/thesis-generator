@@ -2,6 +2,7 @@ package com.example.thesisgenerator.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import org.hibernate.annotations.ColumnTransformer;
 import java.time.LocalDateTime;
 
 @Data
@@ -23,12 +24,15 @@ public class TemplateVersion {
     private Boolean isCurrent = true;
 
     @Column(name = "cover_fields", columnDefinition = "jsonb")
+    @ColumnTransformer(write = "?::jsonb")
     private String coverFields = "[]";
 
     @Column(name = "chapter_structure", columnDefinition = "jsonb")
+    @ColumnTransformer(write = "?::jsonb")
     private String chapterStructure = "[]";
 
     @Column(name = "format_config", columnDefinition = "jsonb")
+    @ColumnTransformer(write = "?::jsonb")
     private String formatConfig = "{}";
 
     @Column(name = "created_at")
