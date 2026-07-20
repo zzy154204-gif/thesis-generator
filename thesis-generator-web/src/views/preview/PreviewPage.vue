@@ -16,13 +16,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Download } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { usePaperStore } from '@/stores/paper'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
+const router = useRouter()
 const paperStore = usePaperStore()
 
 const paper = computed(() => paperStore.currentPaper)
@@ -34,7 +35,11 @@ function handleExport() {
 }
 
 function handleClose() {
-  window.close()
+  if (window.history.length > 1) {
+    router.back()
+  } else {
+    router.push('/papers')
+  }
 }
 
 onMounted(async () => {
@@ -48,10 +53,6 @@ onMounted(async () => {
       .join('<br/>')
   }
 })
-</script>
-
-<script lang="ts">
-import { computed } from 'vue'
 </script>
 
 <style scoped lang="scss">
