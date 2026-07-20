@@ -156,7 +156,7 @@ const pageSize = 12
 
 const paginatedList = computed(() => {
   const start = (currentPage.value - 1) * pageSize
-  return paperList.slice(start, start + pageSize)
+  return paperList.value.slice(start, start + pageSize)
 })
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
