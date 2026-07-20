@@ -16,9 +16,9 @@
       <!-- 论文信息 -->
       <div class="paper-info">
         <el-descriptions :column="4" border size="small">
-          <el-descriptions-item label="学生">{{ paper?.studentName }}</el-descriptions-item>
-          <el-descriptions-item label="学号">{{ paper?.studentId }}</el-descriptions-item>
-          <el-descriptions-item label="课程">{{ paper?.course }}</el-descriptions-item>
+          <el-descriptions-item label="学生">{{ paper?.studentName || '未知' }}</el-descriptions-item>
+          <el-descriptions-item label="学号">{{ paper?.studentId || '未知' }}</el-descriptions-item>
+          <el-descriptions-item label="课程">{{ paper?.course || '未知' }}</el-descriptions-item>
           <el-descriptions-item label="提交时间">{{ formatDate(paper?.submittedAt) }}</el-descriptions-item>
         </el-descriptions>
       </div>
@@ -52,7 +52,7 @@
             <div v-for="ann in annotations" :key="ann.id" class="annotation-item">
               <div class="ann-content">{{ ann.content }}</div>
               <div class="ann-meta">
-                <span>{{ ann.author }}</span>
+                <span>教师 ID: {{ ann.teacherId }}</span>
                 <span>{{ formatDate(ann.createdAt) }}</span>
               </div>
               <div class="ann-actions">
@@ -106,16 +106,15 @@
           </div>
         </div>
         <div class="footer-right">
-          <el-button :loading="draftLoading" @click="saveDraft">暂存</el-button>
+          <!-- 暂存按钮暂时隐藏，后端暂无 /draft 接口 -->
+          <!-- <el-button :loading="draftLoading" @click="saveDraft">暂存</el-button> -->
           <el-button type="warning" :loading="returnLoading" @click="handleReturn">退回</el-button>
           <el-button type="success" :loading="approveLoading" @click="handleApprove">通过</el-button>
         </div>
       </div>
     </div>
 
-    <!-- ============================================================ -->
     <!-- 编辑批注弹窗 -->
-    <!-- ============================================================ -->
     <el-dialog
       v-model="editDialogVisible"
       title="编辑批注"
@@ -145,13 +144,14 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import {
-  getReviewDetail,
-  deleteAnnotation,
+  getReviewHistory,
+  getAnnotations,
+  addAnnotation,
   updateAnnotation,
-  saveReviewDraft,
+  deleteAnnotation,
   returnPaper,
   approvePaper,
-  type ReviewDetail as ReviewDetailType,
+  type ReviewRecord,
   type Annotation,
 } from '@/api/review'
 
@@ -174,7 +174,19 @@ const editContent = ref('')
 const editingAnnotationId = ref<number | null>(null)
 
 // ===== 数据 =====
-const paper = ref<ReviewDetailType['paper'] | null>(null)
+const paper = ref<{
+  id: number
+  title: string
+  studentName: string
+  studentId: string
+  course: string
+  status: string
+  version: number
+  abstract?: string
+  content?: string
+  submittedAt: string
+} | null>(null)
+
 const annotations = ref<Annotation[]>([])
 const comment = ref('')
 const score = ref<number>(85)
@@ -197,11 +209,34 @@ async function fetchData() {
   loading.value = true
 
   try {
-    const res = await getReviewDetail(paperId.value)
-    const data = res.data
-    paper.value = data.paper
-    annotations.value = data.annotations || []
-  } catch {
+    // 1. 获取批阅历史（获取论文基本信息和批阅状态）
+    const historyRes = await getReviewHistory(paperId.value)
+    const records = historyRes.data || []
+
+    // 取最新的批阅记录作为当前状态
+    const latestRecord = records.length > 0 ? records[0] : null
+
+    // 构建 paper 对象（后端 ReviewRecord 没有论文标题和学生信息，需要从其他地方获取）
+    // TODO: 如果后端有 /api/v1/theses/{id} 接口，可以在这里调用获取论文详情
+    // 目前使用模拟数据占位，等后端补充接口后替换
+    paper.value = {
+      id: paperId.value,
+      title: `论文 #${paperId.value}`, // 临时占位，等待后端提供论文详情接口
+      studentName: `学生 (ID: ${latestRecord?.thesisId || paperId.value})`,
+      studentId: `学号 (ID: ${latestRecord?.thesisId || paperId.value})`,
+      course: '课程名称', // 临时占位
+      status: latestRecord?.action === 'REVIEWED' ? 'APPROVED' : 'SUBMITTED',
+      version: records.length,
+      abstract: '本文研究了相关技术...',
+      content: '<p>论文正文内容加载中...</p>',
+      submittedAt: latestRecord?.createdAt || new Date().toISOString(),
+    }
+
+    // 2. 获取批注列表
+    const annRes = await getAnnotations(paperId.value)
+    annotations.value = annRes.data || []
+  } catch (error) {
+    console.error('加载数据失败:', error)
     ElMessage.error('加载数据失败')
   } finally {
     loading.value = false
@@ -215,6 +250,7 @@ function toggleSidebar() {
 
 // ===== 添加批注 =====
 function startAddAnnotation() {
+  // TODO: 实现选中文字添加批注功能
   ElMessage.info('请先在论文预览区选中文字，再添加批注')
 }
 
@@ -225,6 +261,7 @@ function editAnnotation(ann: Annotation) {
   editDialogVisible.value = true
 }
 
+// ===== 确认编辑批注 =====
 async function confirmEdit() {
   if (!editContent.value.trim()) {
     ElMessage.warning('批注内容不能为空')
@@ -232,11 +269,17 @@ async function confirmEdit() {
   }
   if (editingAnnotationId.value === null) return
 
-  const id = editingAnnotationId.value  // 取出 number
+  const id = editingAnnotationId.value
   editLoading.value = true
   try {
-    await updateAnnotation(paperId.value, id, editContent.value.trim())
-    // ...
+    await updateAnnotation(id, editContent.value.trim())
+    // 更新本地列表
+    const index = annotations.value.findIndex((a) => a.id === id)
+    if (index !== -1) {
+      annotations.value[index].content = editContent.value.trim()
+    }
+    ElMessage.success('批注已更新')
+    editDialogVisible.value = false
   } catch {
     ElMessage.error('更新失败')
   } finally {
@@ -250,7 +293,7 @@ function handleDeleteAnnotation(annotationId: number) {
     .then(async () => {
       annotationLoading.value = true
       try {
-        await deleteAnnotation(paperId.value, annotationId)
+        await deleteAnnotation(annotationId)
         annotations.value = annotations.value.filter((a) => a.id !== annotationId)
         ElMessage.success('已删除')
       } catch {
@@ -262,22 +305,18 @@ function handleDeleteAnnotation(annotationId: number) {
     .catch(() => {})
 }
 
-// ===== 暂存 =====
-async function saveDraft() {
-  draftLoading.value = true
-  try {
-    await saveReviewDraft(paperId.value, {
-      comment: comment.value,
-      score: score.value,
-      grade: grade.value,
-    })
-    ElMessage.success('已暂存')
-  } catch {
-    ElMessage.error('暂存失败')
-  } finally {
-    draftLoading.value = false
-  }
-}
+// ===== 暂存（后端暂无 /draft 接口，暂不可用） =====
+// async function saveDraft() {
+//   draftLoading.value = true
+//   try {
+//     // 后端暂无 /draft 接口
+//     ElMessage.warning('暂存功能开发中')
+//   } catch {
+//     ElMessage.error('暂存失败')
+//   } finally {
+//     draftLoading.value = false
+//   }
+// }
 
 // ===== 退回 =====
 function handleReturn() {

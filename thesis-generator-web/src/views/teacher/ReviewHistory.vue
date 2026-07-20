@@ -121,50 +121,28 @@ function getGradeType(grade: string) {
 async function fetchData() {
   loading.value = true
   try {
-    // TODO: 调用真实 API
-    // const res = await getReviewHistory()
-    // tableData.value = res.data
-    // 计算统计信息...
+    // 从路由参数获取论文ID
+    const thesisId = Number(route.params.paperId) || 1
+    const res = await getReviewHistory(thesisId)
+    const records = res.data || []
 
-    // 模拟数据（替换上面的真实 API 调用）
-    await new Promise((r) => setTimeout(r, 500))
-    tableData.value = [
-      {
-        paperId: 1,
-        paperTitle: '基于深度学习的图像分割研究',
-        studentName: '张三',
-        studentId: '2024001',
-        score: 85,
-        grade: '良',
-        status: 'APPROVED',
-        reviewedAt: '2026-07-15T16:00:00',
-      },
-      {
-        paperId: 2,
-        paperTitle: '区块链技术在供应链中的应用',
-        studentName: '李四',
-        studentId: '2024002',
-        score: 62,
-        grade: '及格',
-        status: 'APPROVED',
-        reviewedAt: '2026-07-14T11:00:00',
-      },
-      {
-        paperId: 3,
-        paperTitle: '基于Spring Boot的在线考试系统',
-        studentName: '王五',
-        studentId: '2024003',
-        score: null,
-        grade: null,
-        status: 'RETURNED',
-        reviewedAt: '2026-07-13T17:00:00',
-      },
-    ]
+    // 映射数据（注意：action 是 REVIEWED，不是 APPROVED）
+    tableData.value = records.map((record) => ({
+      paperId: record.thesisId,
+      paperTitle: `论文 #${record.thesisId}`, // 临时占位，等后端补充
+      studentName: `学生 #${record.studentId}`, // 临时占位，等后端补充
+      studentId: record.studentId?.toString() || '未知',
+      score: record.score || null,
+      grade: record.grade || null,
+      status: record.action === 'REVIEWED' ? 'REVIEWED' : 'RETURNED',
+      reviewedAt: record.createdAt,
+    }))
+
     total.value = tableData.value.length
 
-    // 计算统计
+    // 统计
     stats.total = tableData.value.length
-    stats.approved = tableData.value.filter((d) => d.status === 'APPROVED').length
+    stats.approved = tableData.value.filter((d) => d.status === 'REVIEWED').length
     stats.returned = tableData.value.filter((d) => d.status === 'RETURNED').length
     const scored = tableData.value.filter((d) => d.score !== null)
     stats.avgScore =
