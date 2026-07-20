@@ -1,5 +1,6 @@
 <template>
-  <div class="template-editor">
+  <DefaultLayout>
+    <div class="template-editor">
       <!-- 顶栏 -->
       <div class="editor-header">
         <el-button text @click="router.back()">
@@ -107,7 +108,7 @@
         </el-tabs>
       </div>
     </div>
-  </div>
+  </DefaultLayout>
 </template>
 
 <script setup lang="ts">
@@ -115,9 +116,8 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
+import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import CoverConfig from '@/views/admin/templateEditor/CoverConfig.vue'
-import { getColleges } from '@/api/college'
-import { createTemplate, updateTemplate, getAdminTemplate } from '@/api/template'
 
 const router = useRouter()
 const route = useRoute()
@@ -126,12 +126,16 @@ const activeTab = ref('basic')
 const coverConfigRef = ref()
 const isNew = ref(true)
 
-const colleges = ref<Array<{ id: number; name: string }>>([])
+const colleges = ref([
+  { id: 1, name: '计算机学院' },
+  { id: 2, name: '电子工程学院' },
+  { id: 3, name: '数学学院' },
+])
 
 const form = reactive({
   id: 0,
   name: '',
-  collegeId: '' as string | number,
+  collegeId: '',
   type: 'GRADUATION' as 'GRADUATION' | 'COURSE' | 'PROJECT',
   description: '',
 })
@@ -151,32 +155,23 @@ const structure = reactive({
   hasReferences: true,
 })
 
-function onCoverChange(_config: any[]) {
+function onCoverChange(config: any[]) {
   // 封面配置变化
 }
 
 async function handleSave() {
-  if (!form.name.trim()) { ElMessage.warning('请输入模板名称'); return }
   saving.value = true
   try {
-    const coverConfig = coverConfigRef.value?.getConfig() || []
-    const payload = {
-      name: form.name,
-      type: form.type,
-      collegeId: form.collegeId ? Number(form.collegeId) : 1,
-      description: form.description,
-      coverConfig,
-      styles,
-      structure,
-    }
-    if (isNew.value) {
-      await createTemplate(payload)
-      ElMessage.success('模板创建成功')
-    } else {
-      await updateTemplate(form.id, payload)
-      ElMessage.success('模板保存成功')
-    }
-    router.back()
+    const coverConfig = coverConfigRef.value?.getConfig()
+    // TODO: 调用保存 API
+    // await templateApi.save({
+    //   ...form,
+    //   styles,
+    //   structure,
+    //   coverConfig,
+    // })
+    await new Promise((r) => setTimeout(r, 1000))
+    ElMessage.success('保存成功')
   } catch {
     ElMessage.error('保存失败')
   } finally {
@@ -189,25 +184,10 @@ function handlePreview() {
 }
 
 onMounted(async () => {
-  try {
-    const res = await getColleges()
-    colleges.value = res.data || []
-  } catch { /* ignore */ }
-
   const id = route.params.id
   if (id && id !== 'new') {
     isNew.value = false
-    try {
-      const res = await getAdminTemplate(Number(id))
-      const t = res.data
-      form.id = t.id
-      form.name = t.name
-      form.collegeId = t.collegeId ?? ''
-      form.type = t.type
-      form.description = t.description || ''
-    } catch {
-      ElMessage.error('加载模板数据失败')
-    }
+    // TODO: 加载模板数据
   }
 })
 </script>

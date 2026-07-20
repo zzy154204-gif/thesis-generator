@@ -1,6 +1,7 @@
 <!-- src/views/admin/CollegeManage.vue -->
 <template>
-  <div class="college-manage">
+  <DefaultLayout>
+    <div class="college-manage">
       <!-- 工具栏 -->
       <div class="toolbar">
         <el-button type="primary" @click="openDialog()">
@@ -82,16 +83,17 @@
         </template>
       </el-dialog>
     </div>
-  </div>
+  </DefaultLayout>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
-// 导入 API
-import { getColleges } from '@/api/college'
+// 导入 API（待实现）
+// import { collegeApi } from '@/api/college'
 
 // --- 状态 ---
 const loading = ref(false)
@@ -126,12 +128,17 @@ const dialogTitle = computed(() => isEdit.value ? '编辑学院' : '新增学院
 async function fetchData() {
   loading.value = true
   try {
-    const res = await getColleges()
-    tableData.value = (res.data || []).map((c: any) => ({
-      ...c,
-      templateCount: c.templateCount || 0,
-    }))
-    total.value = tableData.value.length
+    // TODO: 调用真实 API
+    // const res = await collegeApi.getList({ page: page.value, size: pageSize.value, keyword: keyword.value })
+    // tableData.value = res.data.list
+    // total.value = res.data.total
+
+    // 模拟数据
+    tableData.value = [
+      { id: 1, name: '计算机学院', code: 'CS', templateCount: 3, createdAt: '2026-01-01T00:00:00' },
+      { id: 2, name: '电子工程学院', code: 'EE', templateCount: 2, createdAt: '2026-01-02T00:00:00' },
+    ]
+    total.value = 2
   } catch {
     ElMessage.error('加载数据失败')
   } finally {

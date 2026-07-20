@@ -40,13 +40,15 @@ export function getAvailableTemplates(params?: {
 export function getAdminTemplates(params?: {
   type?: 'GRADUATION' | 'COURSE' | 'PROJECT'
   collegeId?: number
+  status?: 'ENABLED' | 'DISABLED'
+  keyword?: string
 }): Promise<ApiResult<Template[]>> {
-  return request.get('/templates', { params })
+  return request.get('/admin/templates', { params })
 }
 
 /** 获取模板详情（管理员端：含完整配置） */
 export function getAdminTemplate(id: number): Promise<ApiResult<Template>> {
-  return request.get(`/templates/${id}`)
+  return request.get(`/admin/templates/${id}`)
 }
 
 /** 创建模板 */
@@ -66,7 +68,7 @@ export function createTemplate(data: {
     hasReferences: boolean
   }
 }): Promise<ApiResult<Template>> {
-  return request.post('/templates', data)
+  return request.post('/admin/templates', data)
 }
 
 /** 更新模板 */
@@ -89,7 +91,7 @@ export function updateTemplate(
     }
   }
 ): Promise<ApiResult<Template>> {
-  return request.put(`/templates/${id}`, data)
+  return request.put(`/admin/templates/${id}`, data)
 }
 
 /** 切换模板启用/停用 */
@@ -97,20 +99,20 @@ export function toggleTemplateStatus(
   id: number,
   status: 'ENABLED' | 'DISABLED'
 ): Promise<ApiResult<Template>> {
-  return request.patch(`/templates/${id}/status`, { status })
+  return request.patch(`/admin/templates/${id}/status`, { status })
 }
 
 /** 删除模板 */
 export function deleteTemplate(id: number): Promise<ApiResult<void>> {
-  return request.delete(`/templates/${id}`)
+  return request.delete(`/admin/templates/${id}`)
 }
 
 /** 预览模板（返回 HTML 预览内容） */
 export function previewTemplate(id: number): Promise<ApiResult<{ html: string }>> {
-  return request.get(`/templates/${id}/preview`)
+  return request.get(`/admin/templates/${id}/preview`)
 }
 
 /** 复制模板 */
 export function duplicateTemplate(id: number): Promise<ApiResult<Template>> {
-  return request.post(`/templates/${id}/duplicate`)
+  return request.post(`/admin/templates/${id}/duplicate`)
 }
