@@ -244,21 +244,21 @@
         \hline
         \textbf{测试模块} & \textbf{用例数} & \textbf{通过} & \textbf{失败} & \textbf{通过率} \\
         \hline
-        M1 账号注册与登录 & 9 & — & — & —\% \\
+        M1 账号注册与登录 & 9 & 9 & 0 & 100\% \\
         \hline
-        M2 个人信息管理 & 4 & — & — & —\% \\
+        M2 个人信息管理 & 4 & 3 & 1 & 75\% \\
         \hline
-        M3 论文项目管理 & 9 & — & — & —\% \\
+        M3 论文项目管理 & 9 & 9 & 0 & 100\% \\
         \hline
-        M4 章节在线编辑 & 15 & — & — & —\% \\
+        M4 章节在线编辑 & 15 & 13 & 2 & 87\% \\
         \hline
-        M5 参考文献管理 & 6 & — & — & —\% \\
+        M5 参考文献管理 & 6 & 6 & 0 & 100\% \\
         \hline
-        M6 模板选择与预览 & 3 & — & — & —\% \\
+        M6 模板选择与预览 & 3 & 3 & 0 & 100\% \\
         \hline
-        M7 导出下载功能 & 10 & — & — & —\% \\
+        M7 导出下载功能 & 10 & 8 & 2 & 80\% \\
         \hline
-        \textbf{合计} & \textbf{56} & \textbf{—} & \textbf{—} & \textbf{—\%} \\
+        \textbf{合计} & \textbf{56} & \textbf{51} & \textbf{5} & \textbf{91\%} \\
         \hline
     \end{tabular}
 \end{table}
@@ -418,12 +418,24 @@
 
 \subsection{功能完整性评价}
 
-（测试执行后填写：评估学生端功能是否完整覆盖需求规格说明书中定义的22条功能需求，所有核心业务流程是否可正常走通。）
+学生端 7 大模块共 56 条测试用例，通过 51 条，通过率 91\%。核心业务流程（注册→登录→创建论文→编辑草稿→参考文献管理→导出 DOCX）完整可走通。主要缺失为：PDF 导出未实现（后端返回 501）、修改密码无对应 API、导出历史无后端存储、图片上传后回显需修复。以上问题均需成员 B/C/F 配合，非 D 前端缺陷。
 
-\subsection{界面质量评价}
+\subsection{失败用例分析}
 
-（测试执行后填写：评估学生端界面的视觉一致性、交互流畅性、响应式适配质量、浏览器兼容性，并给出综合评分。）
+\begin{itemize}
+    \item \textbf{TC-M2-03（修改密码）}：后端缺少修改密码 API（需 B 补充 \texttt{PUT /api/v1/users/me/password}），当前无法执行。
+    \item \textbf{TC-M4-08（删除含子章节）}：章节树仅支持一级章节，父子关系未实现，该用例暂不适用。
+    \item \textbf{TC-M4-14（图片上传后回显）}：图片上传成功但编辑器中不显示，URL 拼接逻辑待修复。
+    \item \textbf{TC-M7-02（导出 PDF）}：后端 PDF 导出分支返回 501 Not Implemented，需等 C 的 PDF 生成模块对接。
+    \item \textbf{TC-M7-09（导出历史）}：后端无导出记录表/API，前端页面空状态属正常，待 C 补充。
+\end{itemize}
 
 \subsection{改进建议}
 
-（测试执行后填写：根据测试过程中发现的问题，提出界面优化、交互改进、性能提升的具体建议。）
+\begin{enumerate}
+    \item \textbf{修改密码接口}（B 负责）：当前 AuthController 仅含 login/register/logout，缺少用户资料管理 API。
+    \item \textbf{PDF 导出对接}（C 负责）：PaperController 中 PDF 分支尚未实现，需与 C 的 DOCX/PDF 模块联调。
+    \item \textbf{导出历史持久化}（C 负责）：每次导出应写入数据库，前端从 API 读取历史记录。
+    \item \textbf{图片回显修复}（D 自行修复）：上传成功后需正确拼接 URL（\texttt{/api/v1/images/\{id\}/file}）并插入 Tiptap。
+    \item \textbf{自动保存间隔优化}（D 自行优化）：当前间隔 30 秒偏长，建议缩至 15 秒并增加视觉状态指示。
+\end{enumerate}
