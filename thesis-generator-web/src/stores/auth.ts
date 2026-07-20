@@ -5,7 +5,9 @@ import { setToken, removeToken, getToken } from '@/utils/token'
 import type { UserInfo, LoginRequest, RegisterRequest } from '@/types/api'
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref<UserInfo | null>(null)
+  // 从 localStorage 恢复用户信息
+  const savedUser = localStorage.getItem('user')
+  const user = ref<UserInfo | null>(savedUser ? JSON.parse(savedUser) : null)
   const token = ref<string | null>(getToken())
 
   const isLoggedIn = computed(() => !!token.value)
@@ -22,6 +24,7 @@ export const useAuthStore = defineStore('auth', () => {
       role: data.role as UserInfo['role'],
     }
     setToken(data.token)
+    localStorage.setItem('user', JSON.stringify(user.value))
   }
 
   async function login(data: LoginRequest) {
@@ -45,6 +48,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     user.value = null
     removeToken()
+    localStorage.removeItem('user')
   }
 
   return { user, token, isLoggedIn, isStudent, isTeacher, login, register, fetchProfile, logout }
