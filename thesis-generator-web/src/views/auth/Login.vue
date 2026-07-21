@@ -1,54 +1,47 @@
 <template>
   <AuthLayout>
     <div class="login-form-wrapper">
-      <el-tabs v-model="activeTab" class="auth-tabs">
-        <el-tab-pane label="登录" name="login" />
-        <el-tab-pane label="注册" name="register" />
-      </el-tabs>
+      <h2 class="form-title">欢迎回来</h2>
+      <p class="form-subtitle">请登录您的账号</p>
 
       <el-form
         ref="formRef"
         :model="form"
         :rules="rules"
-        label-position="top"
         size="large"
         @keyup.enter="handleLogin"
       >
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="form.username" placeholder="请输入用户名" :prefix-icon="User" />
+        <el-form-item prop="username">
+          <el-input v-model="form.username" placeholder="用户名" :prefix-icon="User" />
         </el-form-item>
 
-        <el-form-item label="密码" prop="password">
+        <el-form-item prop="password">
           <el-input
             v-model="form.password"
             type="password"
-            placeholder="请输入密码"
+            placeholder="密码"
             show-password
             :prefix-icon="Lock"
           />
         </el-form-item>
 
         <el-form-item>
-          <el-checkbox v-model="rememberMe">记住我</el-checkbox>
-        </el-form-item>
-
-        <el-form-item>
-          <el-button
-            type="primary"
-            :loading="loading"
-            class="submit-btn"
-            @click="handleLogin"
-          >
+          <el-button type="primary" :loading="loading" class="submit-btn" @click="handleLogin">
             {{ loading ? '登录中...' : '登 录' }}
           </el-button>
         </el-form-item>
       </el-form>
+
+      <div class="form-footer">
+        <span class="footer-text">还没有账号？</span>
+        <router-link to="/register" class="footer-link">立即注册</router-link>
+      </div>
     </div>
   </AuthLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
@@ -60,32 +53,18 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
-const activeTab = ref('login')
 const loading = ref(false)
-const rememberMe = ref(false)
 const formRef = ref<FormInstance>()
 
-const form = reactive({
-  username: '',
-  password: '',
-})
+const form = reactive({ username: '', password: '' })
 
 const rules: FormRules = {
-  username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-  ],
+  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, message: '密码长度不少于6位', trigger: 'blur' },
   ],
 }
-
-// 监听 Tab 切换
-watch(activeTab, (tab) => {
-  if (tab === 'register') {
-    router.push('/register')
-  }
-})
 
 async function handleLogin() {
   if (!formRef.value) return
@@ -112,14 +91,40 @@ async function handleLogin() {
   max-width: 360px;
 }
 
-.auth-tabs {
-  margin-bottom: 24px;
-  :deep(.el-tabs__header) {
-    margin-bottom: 0;
-  }
+.form-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+  margin-bottom: 6px;
+}
+
+.form-subtitle {
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 32px;
 }
 
 .submit-btn {
   width: 100%;
+  height: 44px;
+  font-size: 15px;
+  letter-spacing: 2px;
+}
+
+.form-footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 14px;
+
+  .footer-text {
+    color: var(--el-text-color-secondary);
+    margin-right: 4px;
+  }
+
+  .footer-link {
+    color: var(--el-color-primary);
+    font-weight: 500;
+    &:hover { text-decoration: underline; }
+  }
 }
 </style>

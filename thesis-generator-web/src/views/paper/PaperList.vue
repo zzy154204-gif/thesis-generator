@@ -229,7 +229,6 @@ onMounted(() => {
 .paper-list-page {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 24px;
 }
 
 .page-header {
@@ -241,8 +240,8 @@ onMounted(() => {
     display: flex;
     align-items: baseline;
     gap: 12px;
-    .page-title { font-size: 22px; font-weight: 700; color: #303133; margin: 0; }
-    .paper-count { font-size: 14px; color: #909399; }
+    .page-title { font-size: 22px; font-weight: 700; color: var(--el-text-color-primary); margin: 0; }
+    .paper-count { font-size: 14px; color: var(--el-text-color-secondary); }
   }
 }
 
@@ -268,27 +267,27 @@ onMounted(() => {
 }
 
 .paper-card {
-  background: #fff;
-  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+  border-radius: 10px;
   padding: 20px;
   cursor: pointer;
-  transition: all 0.3s ease;
-  border: 1px solid #e4e7ed;
+  transition: all 0.25s ease;
+  border: 1px solid var(--el-border-color-light);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   min-height: 140px;
 
   &:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 6px 20px rgba(62, 46, 31, 0.1);
     transform: translateY(-2px);
-    border-color: #409EFF;
+    border-color: var(--el-color-primary-light-5);
   }
 
   .card-title {
     font-size: 16px;
     font-weight: 600;
-    color: #303133;
+    color: var(--el-text-color-primary);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -302,29 +301,30 @@ onMounted(() => {
     align-items: center;
     gap: 12px;
     margin-bottom: 16px;
-    .card-time { font-size: 12px; color: #909399; }
+    .card-time { font-size: 12px; color: var(--el-text-color-secondary); }
   }
 
   .card-footer {
     display: flex;
     gap: 4px;
-    border-top: 1px solid #f0f0f0;
+    border-top: 1px solid var(--el-border-color-extra-light);
     padding-top: 12px;
   }
 }
 
 .skeleton-card, .skeleton-row {
-  background: #fff;
-  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+  border-radius: 10px;
   padding: 20px;
   min-height: 140px;
 }
 
 .paper-list-view {
-  background: #fff;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
-  .list-title { font-weight: 500; color: #303133; cursor: pointer; }
+  background: var(--el-fill-color-blank);
+  border-radius: 10px;
+  border: 1px solid var(--el-border-color-light);
+  overflow: hidden;
+  .list-title { font-weight: 500; color: var(--el-text-color-primary); cursor: pointer; }
 }
 
 .pagination-wrap {

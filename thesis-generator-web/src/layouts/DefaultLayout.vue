@@ -1,23 +1,19 @@
-<!-- src/layouts/DefaultLayout.vue -->
 <template>
   <div class="default-layout">
     <!-- ===== 顶栏 ===== -->
     <header class="app-header">
       <div class="header-left">
-        <!-- 折叠按钮 -->
         <el-icon class="collapse-btn" @click="isCollapsed = !isCollapsed">
           <Fold v-if="!isCollapsed" />
           <Expand v-else />
         </el-icon>
-        <!-- Logo / 项目名称 -->
         <router-link to="/papers" class="logo">📄 论文生成系统</router-link>
       </div>
 
       <div class="header-right">
-        <!-- 用户信息 + 下拉菜单 -->
         <el-dropdown @command="handleCommand">
           <span class="user-info">
-            <el-avatar :size="32" icon="UserFilled" />
+            <el-avatar :size="30" icon="UserFilled" class="user-avatar" />
             <span class="username">{{ authStore.user?.realName || '用户' }}</span>
           </span>
           <template #dropdown>
@@ -36,30 +32,21 @@
       <!-- 侧边栏 -->
       <aside class="app-sidebar" :class="{ collapsed: isCollapsed }">
         <el-menu
-          :default-active="$route.path"
+          :default-active="route.path"
           router
           :collapse="isCollapsed"
-          background-color="#304156"
-          text-color="#bfcbd9"
-          active-text-color="#409EFF"
+          class="sidebar-menu"
         >
           <template v-for="item in filteredMenus" :key="item.path">
-            <!-- 有子菜单 -->
-            <el-sub-menu v-if="item.children && item.children.length" :index="item.path">
+            <el-sub-menu v-if="item.children?.length" :index="item.path">
               <template #title>
                 <el-icon><component :is="item.icon" /></el-icon>
                 <span>{{ item.title }}</span>
               </template>
-              <el-menu-item
-                v-for="child in item.children"
-                :key="child.path"
-                :index="child.path"
-              >
+              <el-menu-item v-for="child in item.children!" :key="child.path" :index="child.path">
                 {{ child.title }}
               </el-menu-item>
             </el-sub-menu>
-
-            <!-- 无子菜单 -->
             <el-menu-item v-else :index="item.path">
               <el-icon><component :is="item.icon" /></el-icon>
               <span>{{ item.title }}</span>
@@ -70,7 +57,9 @@
 
       <!-- 内容区 -->
       <main class="app-main">
-        <slot />
+        <div class="page-container">
+          <slot />
+        </div>
       </main>
     </div>
   </div>
@@ -83,32 +72,23 @@ import { useAuthStore } from '@/stores/auth'
 import { menuConfig } from '@/config/menu'
 import { Fold, Expand } from '@element-plus/icons-vue'
 
-// ===== 状态 =====
 const authStore = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const isCollapsed = ref(false)
 
-// ===== 计算属性 =====
-// 根据用户角色过滤菜单
 const filteredMenus = computed(() => {
   const role = authStore.user?.role
   return menuConfig.filter((item) => {
-    // 如果菜单项没有 roles 字段，说明是公共菜单，所有人可见
     if (!item.roles) return true
-    // 否则检查当前角色是否在允许列表中
     return item.roles.includes(role || '')
   })
 })
 
-// ===== 方法 =====
-// 下拉菜单命令处理
 function handleCommand(command: string) {
-  if (command === 'profile') {
-    router.push('/profile')
-  } else if (command === 'exportHistory') {
-    router.push('/export-history')
-  } else if (command === 'logout') {
+  if (command === 'profile') router.push('/profile')
+  else if (command === 'exportHistory') router.push('/export-history')
+  else if (command === 'logout') {
     authStore.logout()
     router.push('/login')
   }
@@ -118,7 +98,7 @@ function handleCommand(command: string) {
 <style scoped lang="scss">
 .default-layout {
   min-height: 100vh;
-  background: #f0f2f5;
+  background: var(--el-bg-color-page);
 }
 
 // ---- 顶栏 ----
@@ -127,9 +107,9 @@ function handleCommand(command: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  padding: 0 24px;
+  background: #fdfbf8;
+  border-bottom: 1px solid var(--el-border-color-light);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -141,22 +121,19 @@ function handleCommand(command: string) {
   }
 
   .collapse-btn {
-    font-size: 20px;
+    font-size: 18px;
     cursor: pointer;
-    color: #606266;
+    color: var(--el-text-color-secondary);
     transition: color 0.2s;
-
-    &:hover {
-      color: #409eff;
-    }
+    &:hover { color: var(--el-color-primary); }
   }
 
   .logo {
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 600;
-    color: #409eff;
+    color: var(--el-color-primary);
     text-decoration: none;
-    white-space: nowrap;
+    letter-spacing: 0.5px;
   }
 
   .header-right {
@@ -169,18 +146,15 @@ function handleCommand(command: string) {
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: 4px 10px;
+    border-radius: 6px;
     transition: background 0.2s;
+    &:hover { background: var(--el-fill-color); }
+    .username { font-size: 14px; color: var(--el-text-color-primary); }
+  }
 
-    &:hover {
-      background: #f5f7fa;
-    }
-
-    .username {
-      font-size: 14px;
-      color: #303133;
-    }
+  .user-avatar {
+    background: var(--el-color-primary-light-5);
   }
 }
 
@@ -193,32 +167,50 @@ function handleCommand(command: string) {
 // ---- 侧边栏 ----
 .app-sidebar {
   width: 200px;
-  background: #304156;
-  transition: width 0.3s ease;
+  background: var(--sidebar-bg);
+  transition: width 0.25s ease;
   flex-shrink: 0;
-  overflow: hidden; // 防止折叠时内容溢出
+  overflow: hidden;
 
-  &.collapsed {
-    width: 64px;
-  }
+  &.collapsed { width: 64px; }
 
-  :deep(.el-menu) {
+  :deep(.sidebar-menu) {
     border-right: none;
+    background: transparent;
     height: 100%;
-    width: 100%;
+
+    &:not(.el-menu--collapse) { width: 200px; }
 
     .el-menu-item,
     .el-sub-menu__title {
-      // 确保文字不换行
-      white-space: nowrap;
+      color: var(--sidebar-text) !important;
+      height: 48px;
+      line-height: 48px;
+      transition: background 0.2s, color 0.2s;
+
+      &:hover {
+        background: var(--sidebar-hover) !important;
+        color: var(--sidebar-text-active) !important;
+      }
+
+      .el-icon { color: inherit; }
     }
 
-    // 折叠时隐藏菜单项文字
-    &.el-menu--collapse {
-      .el-menu-item span,
-      .el-sub-menu__title span {
-        display: none;
-      }
+    .el-menu-item.is-active {
+      background: var(--el-color-primary) !important;
+      color: #fff !important;
+      font-weight: 500;
+    }
+
+    .el-sub-menu__title:hover {
+      background: var(--sidebar-hover) !important;
+    }
+
+    .el-menu--inline .el-menu-item {
+      background: rgba(0, 0, 0, 0.12);
+      padding-left: 56px !important;
+      height: 42px;
+      line-height: 42px;
     }
   }
 }
@@ -226,9 +218,13 @@ function handleCommand(command: string) {
 // ---- 内容区 ----
 .app-main {
   flex: 1;
-  padding: 20px;
-  background: #f0f2f5;
+  padding: 24px;
   overflow-y: auto;
-  min-width: 0; // 防止 flex 溢出
+  min-width: 0;
+}
+
+.page-container {
+  max-width: 1200px;
+  margin: 0 auto;
 }
 </style>
