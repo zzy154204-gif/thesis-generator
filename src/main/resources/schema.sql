@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS template (
     type VARCHAR(20) NOT NULL CHECK (type IN ('GRADUATION', 'COURSE', 'PROJECT')),
     college_id BIGINT REFERENCES sys_college(id),
     enabled BOOLEAN DEFAULT TRUE,
+    description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -79,6 +80,7 @@ CREATE TABLE IF NOT EXISTS thesis_section (
 CREATE TABLE IF NOT EXISTS thesis_reference (
     id BIGSERIAL PRIMARY KEY,
     thesis_id BIGINT NOT NULL REFERENCES thesis(id) ON DELETE CASCADE,
+    reference_id BIGINT REFERENCES tb_reference(id),
     authors VARCHAR(500) NOT NULL,
     title VARCHAR(500) NOT NULL,
     journal VARCHAR(300),

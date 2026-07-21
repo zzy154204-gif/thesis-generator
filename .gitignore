@@ -47,3 +47,12 @@ Thumbs.db
 
 ### Log ###
 *.log
+
+### 测试文件 ###
+demo.docx
+
+### Frontend ###
+thesis-generator-web/node_modules/
+thesis-generator-web/dist/
+thesis-generator-web/.vite/
+redis-binaries/

@@ -34,10 +34,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
+        <!-- Redis 已移除，如需恢复请添加 spring-boot-starter-data-redis -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
@@ -53,6 +50,7 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- H2 已移除，如需恢复请添加 h2 -->
         <!-- Spring Security Crypto（仅用于 BCryptPasswordEncoder，避免启用默认 Web 安全过滤链） -->
         <dependency>
             <groupId>org.springframework.security</groupId>
@@ -101,11 +99,7 @@
             <artifactId>spring-boot-starter-data-jpa-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis-test</artifactId>
-            <scope>test</scope>
-        </dependency>
+        <!-- Redis Test 已移除 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc-test</artifactId>

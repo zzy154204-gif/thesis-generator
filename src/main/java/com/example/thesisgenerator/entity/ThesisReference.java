@@ -16,6 +16,9 @@ public class ThesisReference {
     @Column(name = "thesis_id", nullable = false)
     private Long thesisId;
 
+    @Column(name = "reference_id")
+    private Long referenceId;
+
     @Column(nullable = false, length = 500)
     private String authors;
 

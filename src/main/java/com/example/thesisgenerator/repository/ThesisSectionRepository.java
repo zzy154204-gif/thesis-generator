@@ -7,4 +7,5 @@ import java.util.List;
 public interface ThesisSectionRepository extends JpaRepository<ThesisSection, Long> {
     List<ThesisSection> findByThesisIdOrderBySortOrder(Long thesisId);
     List<ThesisSection> findByThesisIdAndParentIdOrderBySortOrder(Long thesisId, Long parentId);
+    List<ThesisSection> findByThesisIdAndParentIdIsNullOrderBySortOrder(Long thesisId);
 }
