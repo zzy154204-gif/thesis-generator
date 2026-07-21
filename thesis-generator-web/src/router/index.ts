@@ -1,116 +1,118 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { getToken } from '@/utils/token'
-import DefaultLayout from "@/layouts/DefaultLayout.vue";
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    // ===== 公开页面 =====
     {
       path: '/login',
       name: 'Login',
       component: () => import('@/views/auth/Login.vue'),
-      meta: { requiresAuth: false, layout: 'auth' },
+      meta: { requiresAuth: false },
     },
     {
       path: '/register',
       name: 'Register',
       component: () => import('@/views/auth/Register.vue'),
-      meta: { requiresAuth: false, layout: 'auth' },
+      meta: { requiresAuth: false },
     },
+
+    // ===== 学生页面 =====
     {
       path: '/papers',
       name: 'PaperList',
       component: () => import('@/views/paper/PaperList.vue'),
-      meta: { requiresAuth: true, layout: 'default' },
+      meta: { requiresAuth: true },
     },
     {
       path: '/papers/create',
       name: 'PaperCreate',
       component: () => import('@/views/paper/PaperCreate.vue'),
-      meta: { requiresAuth: true, layout: 'default' },
+      meta: { requiresAuth: true },
     },
     {
       path: '/editor/:paperId',
       name: 'PaperEditor',
       component: () => import('@/views/paper/PaperEditor.vue'),
-      meta: { requiresAuth: true, layout: 'editor' },
+      meta: { requiresAuth: true },
     },
     {
       path: '/preview/:paperId',
       name: 'Preview',
       component: () => import('@/views/preview/PreviewPage.vue'),
-      meta: { requiresAuth: true, layout: 'default' },
+      meta: { requiresAuth: true },
     },
+    {
+      path: '/templates',
+      name: 'StudentTemplates',
+      component: () => import('@/views/student/TemplateBrowse.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/references',
+      name: 'StudentReferences',
+      component: () => import('@/views/student/ReferenceManage.vue'),
+      meta: { requiresAuth: true },
+    },
+
+    // ===== 管理员页面 =====
+    {
+      path: '/admin/colleges',
+      name: 'CollegeManage',
+      component: () => import('@/views/admin/CollegeManage.vue'),
+      meta: { requiresAuth: true, roles: ['ADMIN'] },
+    },
+    {
+      path: '/admin/templates',
+      name: 'TemplateList',
+      component: () => import('@/views/admin/TemplateList.vue'),
+      meta: { requiresAuth: true, roles: ['ADMIN'] },
+    },
+    {
+      path: '/admin/templates/new',
+      name: 'TemplateNew',
+      component: () => import('@/views/admin/TemplateEditor.vue'),
+      meta: { requiresAuth: true, roles: ['ADMIN'] },
+    },
+    {
+      path: '/admin/templates/:id',
+      name: 'TemplateEdit',
+      component: () => import('@/views/admin/TemplateEditor.vue'),
+      meta: { requiresAuth: true, roles: ['ADMIN'] },
+    },
+
+    // ===== 教师页面 =====
+    {
+      path: '/teacher/review',
+      name: 'PendingList',
+      component: () => import('@/views/teacher/PendingList.vue'),
+      meta: { requiresAuth: true, roles: ['TEACHER'] },
+    },
+    {
+      path: '/teacher/review/:id',
+      name: 'ReviewDetail',
+      component: () => import('@/views/teacher/ReviewDetail.vue'),
+      meta: { requiresAuth: true, roles: ['TEACHER'] },
+    },
+
+    // ===== 公共页面 =====
     {
       path: '/profile',
       name: 'Profile',
       component: () => import('@/views/user/Profile.vue'),
-      meta: { requiresAuth: true, layout: 'default' },
+      meta: { requiresAuth: true },
     },
     {
       path: '/export-history',
       name: 'ExportHistory',
       component: () => import('@/views/user/ExportHistory.vue'),
-      meta: { requiresAuth: true, layout: 'default' },
+      meta: { requiresAuth: true },
     },
-    {
-      path: '/demo/tiptap',
-      name: 'TiptapDemo',
-      component: () => import('@/views/demo/TiptapDemo.vue'),
-      meta: { requiresAuth: false, layout: 'default' },
-    },
-    {
-      path: '/',
-      redirect: '/papers',
-    },
-    {
-      path: '/:pathMatch(.*)*',
-      redirect: '/papers',
-    },
-    {
-      path: '/admin',
-      component: DefaultLayout,
-      meta: { requiresAuth: true, roles: ['ADMIN'] },
-      children: [
-        {
-          path: 'colleges',
-          component: () => import('@/views/admin/CollegeManage.vue'),
-          meta: { title: '学院管理' }
-        },
-        {
-          path: 'templates',
-          component: () => import('@/views/admin/TemplateList.vue'),
-          meta: { title: '模板管理' }
-        },
-        {
-          path: 'templates/new',
-          component: () => import('@/views/admin/TemplateEditor.vue'),
-          meta: { title: '新建模板' }
-        },
-        {
-          path: 'templates/:id',
-          component: () => import('@/views/admin/TemplateEditor.vue'),
-          meta: { title: '编辑模板' }
-        }
-      ]
-    },
-    {
-      path: '/teacher',
-      component: DefaultLayout,
-      meta: { requiresAuth: true, roles: ['TEACHER'] },
-      children: [
-        {
-          path: 'review',
-          component: () => import('@/views/teacher/PendingList.vue'),
-          meta: { title: '待批阅' }
-        },
-        {
-          path: 'review/:id',
-          component: () => import('@/views/teacher/ReviewDetail.vue'),
-          meta: { title: '批阅详情' }
-        }
-      ]
-    },
+
+    // ===== 重定向 =====
+    { path: '/', redirect: '/papers' },
+    { path: '/:pathMatch(.*)*', redirect: '/papers' },
   ],
 })
 

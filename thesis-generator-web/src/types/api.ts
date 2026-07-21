@@ -77,27 +77,32 @@ export interface TemplateVersion {
   version: string
 }
 
-// 参考文献
+// 参考文献（与后端 Reference 实体对齐）
 export interface Reference {
   id: number
-  thesisId: number
-  type: 'J' | 'C' | 'M' | 'D' | 'EB_OL'
-  author: string
+  authors: string
   title: string
+  type: 'J' | 'M' | 'C' | 'D' | 'EB'
+  year?: number
   journal?: string
-  year: string
   volume?: string
   issue?: string
   pages?: string
   publisher?: string
-  doi?: string
+  address?: string
+  conference?: string
+  institution?: string
   url?: string
+  accessDate?: string
 }
 
 // 学院
 export interface College {
   id: number
   name: string
+  code?: string
+  templateCount?: number
+  createdAt?: string
 }
 
 // 导出任务

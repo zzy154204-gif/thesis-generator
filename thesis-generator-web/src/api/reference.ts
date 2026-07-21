@@ -14,7 +14,7 @@ export function getReference(id: number): Promise<ApiResult<Reference>> {
 }
 
 /** 新增参考文献 */
-export function createReference(data: Omit<Reference, 'id' | 'thesisId'>): Promise<ApiResult<Reference>> {
+export function createReference(data: Omit<Reference, 'id'>): Promise<ApiResult<Reference>> {
   return request.post('/references', data)
 }
 

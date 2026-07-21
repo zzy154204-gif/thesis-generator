@@ -1,6 +1,6 @@
 import {
   School, Document, Files, User, Setting,
-  ChatLineSquare, Tickets, EditPen
+  ChatLineSquare, Tickets, EditPen, Reading
 } from '@element-plus/icons-vue'
 
 export interface MenuItem {
@@ -22,6 +22,7 @@ export const menuConfig: MenuItem[] = [
   // ===== 学生菜单 =====
   { path: '/papers', title: '我的论文', icon: Document, roles: ['STUDENT'] },
   { path: '/templates', title: '模板库', icon: Files, roles: ['STUDENT'] },
+  { path: '/references', title: '参考文献', icon: Reading, roles: ['STUDENT'] },
 
   // ===== 教师菜单 =====
   { path: '/teacher/review', title: '待批阅', icon: ChatLineSquare, roles: ['TEACHER'] },
