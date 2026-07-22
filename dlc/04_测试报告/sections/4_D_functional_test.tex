@@ -1,0 +1,429 @@
+% ============================================================
+% 4_D_functional_test.tex — 功能测试 + 界面测试
+% 编写人：D（测试报告主笔）  日期：2026-07-21
+% ============================================================
+
+\section{功能测试设计与执行}
+
+\subsection{测试策略}
+
+功能测试覆盖学生端全部6大功能模块，采用黑盒测试方法，基于需求规格说明书中的功能需求逐条编写测试用例。测试执行按照"正向用例优先、边界条件其次、异常路径最后"的优先级进行。
+
+\subsection{测试模块划分}
+
+\begin{table}[htbp]
+    \centering
+    \caption{学生端功能测试模块划分}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{模块编号} & \textbf{测试模块} & \textbf{覆盖需求} \\
+        \hline
+        M1 & 账号注册与登录 & FR-D01, FR-D02 \\
+        \hline
+        M2 & 个人信息管理 & FR-D03, FR-D04 \\
+        \hline
+        M3 & 论文项目管理 & FR-D05, FR-D06, FR-D07 \\
+        \hline
+        M4 & 章节在线编辑 & FR-D08, FR-D09, FR-D10, FR-D11, FR-D12 \\
+        \hline
+        M5 & 参考文献管理 & FR-D13, FR-D14, FR-D15, FR-D16 \\
+        \hline
+        M6 & 模板选择与预览 & FR-D17, FR-D18, FR-D19 \\
+        \hline
+        M7 & 导出下载功能 & FR-D20, FR-D21, FR-D22 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{重点测试用例设计}
+
+\subsubsection{测试模块M1：账号注册与登录}
+
+\begin{table}[htbp]
+    \centering
+    \caption{M1-账号注册与登录测试用例}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试场景} & \textbf{输入} & \textbf{预期结果} \\
+        \hline
+        TC-M1-01 & 正常注册 & 合法学号、姓名、邮箱、密码 & 注册成功，跳转登录页 \\
+        \hline
+        TC-M1-02 & 重复学号注册 & 已注册的学号 & 提示"该学号已被注册" \\
+        \hline
+        TC-M1-03 & 邮箱格式错误 & 非法邮箱格式 & 提示"邮箱格式不正确" \\
+        \hline
+        TC-M1-04 & 密码过短 & 5位密码 & 提示"密码长度不少于6位" \\
+        \hline
+        TC-M1-05 & 两次密码不一致 & 不一致的确认密码 & 提示"两次密码不一致" \\
+        \hline
+        TC-M1-06 & 正常登录 & 正确学号+密码 & 登录成功，跳转论文列表 \\
+        \hline
+        TC-M1-07 & 错误密码登录 & 正确学号+错误密码 & 提示"密码错误" \\
+        \hline
+        TC-M1-08 & 不存在账号 & 未注册学号 & 提示"账号不存在" \\
+        \hline
+        TC-M1-09 & 空字段提交 & 空白表单 & 各字段显示必填提示 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{测试模块M2：个人信息管理}
+
+\begin{table}[htbp]
+    \centering
+    \caption{M2-个人信息管理测试用例}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试场景} & \textbf{输入/操作} & \textbf{预期结果} \\
+        \hline
+        TC-M2-01 & 查看个人信息 & 登录后进入个人中心 & 正确显示学号、姓名、邮箱、手机号 \\
+        \hline
+        TC-M2-02 & 修改姓名和邮箱 & 输入新姓名和新邮箱 & 修改成功，页面刷新显示新信息 \\
+        \hline
+        TC-M2-03 & 修改密码（正确原密码） & 输入正确原密码+新密码 & 密码修改成功，提示重新登录 \\
+        \hline
+        TC-M2-04 & 修改密码（错误原密码） & 输入错误原密码+新密码 & 提示"原密码错误"，修改失败 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{测试模块M3：论文项目管理}
+
+\begin{table}[htbp]
+    \centering
+    \caption{M3-论文项目管理测试用例}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试场景} & \textbf{输入/操作} & \textbf{预期结果} \\
+        \hline
+        TC-M3-01 & 正常创建论文 & 标题+学院+模板+确认 & 论文创建成功，跳转编辑器 \\
+        \hline
+        TC-M3-02 & 空标题创建 & 标题为空 & 提示"请输入论文标题" \\
+        \hline
+        TC-M3-03 & 超长标题 & 201字标题 & 提示"标题不超过200字" \\
+        \hline
+        TC-M3-04 & 未选模板 & 标题+学院，不选模板 & 确认按钮禁用 \\
+        \hline
+        TC-M3-05 & 论文列表展示 & 无 & 列表正确显示所有论文 \\
+        \hline
+        TC-M3-06 & 搜索论文 & 输入关键词 & 仅显示匹配论文 \\
+        \hline
+        TC-M3-07 & 删除论文 & 点击删除→确认 & 论文删除，列表刷新 \\
+        \hline
+        TC-M3-08 & 取消删除 & 点击删除→取消 & 论文保留 \\
+        \hline
+        TC-M3-09 & 空列表展示 & 新注册用户 & 显示空状态插画和引导文字 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{测试模块M4：章节在线编辑}
+
+\begin{table}[htbp]
+    \centering
+    \caption{M4-章节在线编辑测试用例}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试场景} & \textbf{操作} & \textbf{预期结果} \\
+        \hline
+        TC-M4-01 & 基础富文本编辑 & 输入文字、加粗、倾斜 & 正确渲染格式 \\
+        \hline
+        TC-M4-02 & 标题切换 & 选中文字，切换H1-H4 & 应用对应标题样式 \\
+        \hline
+        TC-M4-03 & 列表编辑 & 插入有序/无序列表 & 列表正确生成 \\
+        \hline
+        TC-M4-04 & 章节切换 & 点击不同章节名 & 内容正确切换 \\
+        \hline
+        TC-M4-05 & 添加章节 & 右键→添加→输入名称 & 新章节出现在树中 \\
+        \hline
+        TC-M4-06 & 章节重命名 & 右键→重命名→新名称 & 章节名称更新 \\
+        \hline
+        TC-M4-07 & 删除章节 & 右键→删除→确认 & 章节被删除 \\
+        \hline
+        TC-M4-08 & 删除含子章节 & 右键→删除→确认 & 提示"将同时删除X个子章节" \\
+        \hline
+        TC-M4-09 & 拖拽排序 & 拖拽章节到新位置 & 顺序更新并持久化 \\
+        \hline
+        TC-M4-10 & 自动保存 & 编辑后等待30秒 & 状态变"已保存"，刷新后内容保留 \\
+        \hline
+        TC-M4-11 & 手动保存 & 编辑后点击保存 & 立即保存，状态更新 \\
+        \hline
+        TC-M4-12 & 关闭前提示 & 编辑后未保存，关闭标签页 & 弹出"有未保存修改"提示 \\
+        \hline
+        TC-M4-13 & 撤销/重做 & 输入→撤销→重做 & 正确撤销和恢复 \\
+        \hline
+        TC-M4-14 & 图片上传 & 插入图片→选文件 & 图片上传并显示 \\
+        \hline
+        TC-M4-15 & 表格插入 & 插入表格→选行列 & 表格正确生成 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{测试模块M5：参考文献管理}
+
+\begin{table}[htbp]
+    \centering
+    \caption{M5-参考文献管理测试用例}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试场景} & \textbf{输入/操作} & \textbf{预期结果} \\
+        \hline
+        TC-M5-01 & 添加期刊论文[J] & 填写作者、标题、期刊、年份、卷号、页码 & 文献添加成功，出现在列表中 \\
+        \hline
+        TC-M5-02 & 添加会议论文[C] & 填写作者、标题、会议名称、年份 & 文献添加成功，表单字段随类型切换 \\
+        \hline
+        TC-M5-03 & 编辑参考文献 & 修改已有文献的标题和年份 & 修改成功，列表刷新 \\
+        \hline
+        TC-M5-04 & 删除参考文献 & 点击删除→确认 & 文献删除，若正文有引用则提示 \\
+        \hline
+        TC-M5-05 & 插入引用标记 & 光标定位正文某处→选文献→引用 & 正文光标处插入 [N] 标记 \\
+        \hline
+        TC-M5-06 & 引用编号自动重排 & 新增一条文献并插入引用 & 正文引用标记和文末列表编号同步更新 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{测试模块M6：模板选择与预览}
+
+\begin{table}[htbp]
+    \centering
+    \caption{M6-模板选择与预览测试用例}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试场景} & \textbf{输入/操作} & \textbf{预期结果} \\
+        \hline
+        TC-M6-01 & 浏览可用模板 & 创建论文时查看模板列表 & 展示所有已启用模板，含缩略图和说明 \\
+        \hline
+        TC-M6-02 & 按学院筛选模板 & 选择学院下拉筛选 & 仅显示该学院关联的模板 \\
+        \hline
+        TC-M6-03 & 模板实时预览 & 选择不同模板 & 预览区实时更新为所选模板样式 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{测试模块M7：导出下载功能}
+
+\begin{table}[htbp]
+    \centering
+    \caption{M7-导出下载功能测试用例}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试场景} & \textbf{操作} & \textbf{预期结果} \\
+        \hline
+        TC-M7-01 & 导出全部DOCX & 选DOCX+全部章节 & 生成DOCX，下载成功 \\
+        \hline
+        TC-M7-02 & 导出全部PDF & 选PDF+全部章节 & 生成PDF，下载成功 \\
+        \hline
+        TC-M7-03 & 导出指定章节 & 选指定章节范围 & 仅导出所选章节 \\
+        \hline
+        TC-M7-04 & 导出含封面 & 勾选"包含封面" & 导出文件首页为封面 \\
+        \hline
+        TC-M7-05 & 导出含目录 & 勾选"包含目录" & 导出文件含目录页 \\
+        \hline
+        TC-M7-06 & 导出含参考文献 & 勾选"含参考文献" & 文末有格式化文献列表 \\
+        \hline
+        TC-M7-07 & 导出进度展示 & 点击导出 & 显示进度条和状态文字 \\
+        \hline
+        TC-M7-08 & 导出失败处理 & 触发失败 & 显示错误原因+重新导出按钮 \\
+        \hline
+        TC-M7-09 & 导出历史查看 & 进入导出历史 & 显示历史记录列表 \\
+        \hline
+        TC-M7-10 & 重新下载 & 点击下载按钮 & 可重新下载文件 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{功能测试执行统计}
+
+总计设计测试用例 \textbf{56条}，覆盖学生端7大模块、22条功能需求：
+
+\begin{table}[htbp]
+    \centering
+    \caption{学生端功能测试用例统计}
+    \begin{tabular}{|c|c|c|c|c|}
+        \hline
+        \textbf{测试模块} & \textbf{用例数} & \textbf{通过} & \textbf{失败} & \textbf{通过率} \\
+        \hline
+        M1 账号注册与登录 & 9 & — & — & —\% \\
+        \hline
+        M2 个人信息管理 & 4 & — & — & —\% \\
+        \hline
+        M3 论文项目管理 & 9 & — & — & —\% \\
+        \hline
+        M4 章节在线编辑 & 15 & — & — & —\% \\
+        \hline
+        M5 参考文献管理 & 6 & — & — & —\% \\
+        \hline
+        M6 模板选择与预览 & 3 & — & — & —\% \\
+        \hline
+        M7 导出下载功能 & 10 & — & — & —\% \\
+        \hline
+        \textbf{合计} & \textbf{56} & \textbf{—} & \textbf{—} & \textbf{—\%} \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\section{界面测试设计与执行}
+
+\subsection{界面测试通用检查项}
+
+\begin{table}[htbp]
+    \centering
+    \caption{界面测试通用检查项清单}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{检查类别} & \textbf{检查项} & \textbf{检查标准} \\
+        \hline
+        \multirow{3}{*}{布局} & 页面元素完整性 & 所有设计元素已实现 \\
+        \cline{2-3}
+        & 布局一致性 & 各页面统一布局组件 \\
+        \cline{2-3}
+        & 对齐与间距 & 遵循8px基础网格 \\
+        \hline
+        \multirow{3}{*}{视觉} & 色彩一致性 & 主色\#409EFF，成功\#67C23A，警告\#E6A23C，危险\#F56C6C \\
+        \cline{2-3}
+        & 字体规范 & 标题16-20px，正文14px，辅助12px \\
+        \cline{2-3}
+        & 状态反馈 & 成功/失败/警告提示风格统一 \\
+        \hline
+        \multirow{3}{*}{交互} & 按钮样式 & 主/次/危险操作样式一致 \\
+        \cline{2-3}
+        & 弹窗规范 & 统一使用ElMessageBox \\
+        \cline{2-3}
+        & 加载状态 & 骨架屏/loading遮罩一致 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{各页面专项界面测试}
+
+\begin{table}[htbp]
+    \centering
+    \caption{登录/注册页界面测试}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试项} & \textbf{预期结果} \\
+        \hline
+        UI-LR-01 & 居中布局 & 卡片垂直水平居中 \\
+        \hline
+        UI-LR-02 & Tab切换 & 表单区域平滑切换 \\
+        \hline
+        UI-LR-03 & 密码显示切换 & 明文/密文切换正常 \\
+        \hline
+        UI-LR-04 & 按钮状态 & 空表单时按钮禁用 \\
+        \hline
+        UI-LR-05 & 错误提示位置 & 红色提示在对应字段下方 \\
+        \hline
+        UI-LR-06 & 响应式适配 & 375px窗口下自适应 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{编辑器页面界面测试}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{测试项} & \textbf{预期结果} \\
+        \hline
+        UI-ED-01 & 三栏布局 & 各栏独立滚动 \\
+        \hline
+        UI-ED-02 & 面板收起/展开 & 收起至40px，展开恢复 \\
+        \hline
+        UI-ED-03 & 工具栏按钮激活态 & 选中加粗文字，加粗按钮高亮 \\
+        \hline
+        UI-ED-04 & 右键菜单 & 弹出正确菜单项 \\
+        \hline
+        UI-ED-05 & 拖拽排序视觉 & 有插入位置指示线 \\
+        \hline
+        UI-ED-06 & 保存状态指示 & "未保存"→"保存中..."→"已保存" \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{响应式适配测试}
+
+\begin{table}[htbp]
+    \centering
+    \caption{响应式适配测试}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{用例ID} & \textbf{分辨率} & \textbf{预期表现} \\
+        \hline
+        UI-RS-01 & 1920×1080 & 所有页面完整显示 \\
+        \hline
+        UI-RS-02 & 1366×768 & 论文列表2列，编辑器正常 \\
+        \hline
+        UI-RS-03 & 1024×768 & 论文列表2列，侧面板默认收起 \\
+        \hline
+        UI-RS-04 & 768×1024 & 论文列表2列，仅编辑区 \\
+        \hline
+        UI-RS-05 & 375×667 & 论文列表1列，抽屉式章节列表 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{浏览器兼容性测试}
+
+\begin{table}[htbp]
+    \centering
+    \caption{浏览器兼容性测试矩阵}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{浏览器} & \textbf{版本} & \textbf{核心功能} & \textbf{样式渲染} \\
+        \hline
+        Google Chrome & 120+ & — & — \\
+        \hline
+        Microsoft Edge & 120+ & — & — \\
+        \hline
+        Mozilla Firefox & 120+ & — & — \\
+        \hline
+        Apple Safari & 17+ & — & — \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{界面缺陷分级标准}
+
+\begin{itemize}
+    \item \textbf{严重（P0）}：核心页面完全无法使用，布局严重错乱，主要操作按钮不可见或不可点击；
+    \item \textbf{一般（P1）}：控件对齐偏差>5px，颜色/字体与规范不符，交互反馈缺失；
+    \item \textbf{轻微（P2）}：间距偏差1-2px，hover效果不流畅，响应式下非核心元素排列稍乱；
+    \item \textbf{建议（P3）}：动画过渡可优化，空状态插画可更换，提示文案可更友好。
+\end{itemize}
+
+\section{测试环境配置}
+
+\begin{table}[htbp]
+    \centering
+    \caption{功能与界面测试环境}
+    \begin{tabular}{|c|c|}
+        \hline
+        \textbf{环境项} & \textbf{配置} \\
+        \hline
+        测试设备 & Windows 11 PC, MacBook Pro, iPad, iPhone \\
+        \hline
+        浏览器 & Chrome 120+, Edge 120+, Firefox 120+, Safari 17+ \\
+        \hline
+        分辨率 & 1920×1080, 2560×1440, 1366×768, 1024×768, 375×667 \\
+        \hline
+        后端环境 & SpringBoot 3.x, PostgreSQL 17, Redis 7 \\
+        \hline
+        前端版本 & Vue 3.4 + Vite 5.0 + Element Plus 2.5 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\section{测试结论与建议}
+
+\subsection{功能完整性评价}
+
+（测试执行后填写：评估学生端功能是否完整覆盖需求规格说明书中定义的22条功能需求，所有核心业务流程是否可正常走通。）
+
+\subsection{界面质量评价}
+
+（测试执行后填写：评估学生端界面的视觉一致性、交互流畅性、响应式适配质量、浏览器兼容性，并给出综合评分。）
+
+\subsection{改进建议}
+
+（测试执行后填写：根据测试过程中发现的问题，提出界面优化、交互改进、性能提升的具体建议。）

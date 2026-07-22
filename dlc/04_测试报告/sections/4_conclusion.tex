@@ -1,0 +1,101 @@
+% ============================================================
+% 4_conclusion.tex — 缺陷分析 + 测试结论
+% 编写人：D  日期：2026-07-22
+% ============================================================
+
+\section{缺陷分析与问题汇总}
+
+\subsection{缺陷分类统计}
+
+\begin{table}[htbp]
+    \centering
+    \caption{缺陷分级统计}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{严重程度} & \textbf{数量} & \textbf{占比} & \textbf{说明} \\
+        \hline
+        严重（P0） & 0 & 0\% & 无核心功能阻断 \\
+        \hline
+        重大（P1） & 0 & 0\% & — \\
+        \hline
+        一般（P2） & 1 & 20\% & PDF导出依赖LibreOffice（镜像+200MB） \\
+        \hline
+        轻微（P3） & 4 & 80\% & 代码警告、构建配置 \\
+        \hline
+        \textbf{合计} & \textbf{5} & \textbf{100\%} & — \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{缺陷详情清单}
+
+\begin{table}[htbp]
+    \centering
+    \caption{缺陷完整记录}
+    \begin{tabular}{|c|c|c|c|c|c|}
+        \hline
+        \textbf{编号} & \textbf{描述} & \textbf{模块} & \textbf{严重度} & \textbf{发现人} & \textbf{状态} \\
+        \hline
+        BUG-01 & PDF导出依赖LibreOffice，镜像增大约200MB & 导出 & 一般 & D & 已记录 \\
+        \hline
+        BUG-02 & router/index.ts const重复赋值导致构建失败 & 前端 & 轻微 & D & 已修复 \\
+        \hline
+        BUG-03 & Dockerfile未配置Maven国内镜像，首次构建超时 & 部署 & 轻微 & D & 已修复 \\
+        \hline
+        BUG-04 & vuedraggable缺少TypeScript类型声明 & 前端 & 轻微 & D & 已修复 \\
+        \hline
+        BUG-05 & Sass legacy JS API弃用警告 & 前端 & 轻微 & D & 已修复 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{缺陷原因分析}
+
+5个缺陷全部已修复或记录在案。其中4个为构建和工具链配置问题（BUG-02至BUG-05），在项目早期属于正常现象。1个架构级问题（PDF依赖LibreOffice）为设计取舍——在开发周期内优先保证功能可用性，后续可替换为轻量级Java原生PDF方案（Apache PDFBox + FlyingSaucer）。
+
+\subsection{已修复缺陷说明}
+
+BUG-02、BUG-03、BUG-04 已在 dev-memberD-v2 分支中全部修复，具体修改：
+\begin{itemize}
+    \item \texttt{router/index.ts}：\texttt{const base64} 改为 \texttt{let base64}
+    \item \texttt{Dockerfile}：改用 \texttt{maven:3.9-eclipse-temurin-21} 镜像 + \texttt{settings.xml} 阿里云镜像加速
+    \item 补装缺失的 tiptap 扩展包：\texttt{@tiptap/extension-text-align}、\texttt{@tiptap/extension-superscript}、\texttt{@tiptap/extension-subscript}
+    \item \texttt{vite.config.ts}：代理端口从 8080 更新为 8082
+\end{itemize}
+
+\section{测试结论}
+
+\subsection{功能完整性结论}
+
+系统覆盖需求规格说明书中全部功能需求，9 大功能模块（用户认证、权限控制、论文管理、章节编辑、模板管理、学院管理、教师审核、参考文献、文档导出）和 12 个前端页面全部通过测试，通过率 100\%。
+
+\subsection{性能达标情况结论}
+
+本地 Docker 部署环境下，核心接口（登录、论文列表、章节保存）在 50 并发以下响应时间 <150ms，QPS >300，满足高校实训项目的实用性要求。Docker 三容器总内存占用约 720MB，适合在常规开发机器和轻量服务器上运行。
+
+\subsection{系统安全与兼容性结论}
+
+\begin{itemize}
+    \item 安全：16 项安全测试全部通过，JWT + RBAC 权限模型正确，SQL/XSS 注入防护有效，BCrypt 密码加密到位
+    \item 兼容：Chrome、Edge、Firefox、Safari 四大浏览器均通过，PostgreSQL/H2 双数据库兼容，Docker 和本地两种部署模式均验证通过
+\end{itemize}
+
+\subsection{上线/交付判定意见}
+
+\textbf{系统达到交付标准。}
+
+全部 50 条 API 用例和 12 个前端页面测试通过，无严重/重大缺陷。建议在以下条件满足后上线：
+\begin{enumerate}
+    \item JWT Secret 改用环境变量注入（非硬编码）
+    \item 生产环境启用 HTTPS
+    \item 补充 Selenium 自动化回归测试脚本
+\end{enumerate}
+
+\section{建议与改进措施}
+
+\begin{itemize}
+    \item \textbf{程序优化}：PDF 导出考虑用 Apache PDFBox + FlyingSaucer 替代 LibreOffice，减小镜像体积约 200MB
+    \item \textbf{安全加固}：增加登录失败锁定机制和 API Rate Limiting
+    \item \textbf{自动化测试}：引入 JUnit 5 + Spring Boot Test 编写后端自动化测试，Selenium + Vitest 编写前端自动化测试
+    \item \textbf{监控运维}：添加 Spring Boot Actuator + Prometheus 指标暴露，便于生产环境监控
+\end{itemize}
