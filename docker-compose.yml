@@ -24,8 +24,9 @@ services:
       POSTGRES_DB: thesis_generator
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:-123456}
+    # 宿主 5433 → 容器 5432（避免与本机 PostgreSQL 的 5432 冲突）
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -52,6 +53,7 @@ services:
       APP_UPLOAD_DIR: /app/uploads/images
       LIBREOFFICE_PATH: /usr/bin/libreoffice
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    # 宿主 8080 → 容器 8080
     ports:
       - "8080:8080"
     volumes:
@@ -66,8 +68,9 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    # 宿主 8081 → 容器 80（避免与本机 IIS 的 80 端口冲突）
     ports:
-      - "80:80"
+      - "8081:80"
 
 volumes:
   pgdata:
