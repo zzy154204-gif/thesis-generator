@@ -76,11 +76,11 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Swagger/Knife4j API文档 -->
+        <!-- Swagger/OpenAPI 文档（springdoc 3.x 兼容 Spring Boot 4.x） -->
         <dependency>
-            <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
-            <version>4.5.0</version>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>3.0.3</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -92,6 +92,12 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>5.4.0</version>
+        </dependency>
+        <!-- Jsoup: HTML 解析，用于导出时提取图片 -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.19.1</version>
         </dependency>
 
         <dependency>
