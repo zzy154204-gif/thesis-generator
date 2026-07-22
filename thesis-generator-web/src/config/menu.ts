@@ -21,7 +21,6 @@ export const menuConfig: MenuItem[] = [
 
   // ===== 学生菜单 =====
   { path: '/papers', title: '我的论文', icon: Document, roles: ['STUDENT'] },
-  { path: '/templates', title: '模板库', icon: Files, roles: ['STUDENT'] },
 
   // ===== 教师菜单 =====
   { path: '/teacher/review', title: '待批阅', icon: ChatLineSquare, roles: ['TEACHER'] },

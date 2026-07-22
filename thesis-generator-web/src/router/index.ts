@@ -92,6 +92,7 @@ const router = createRouter({
           component: () => import('@/views/admin/TemplateEditor.vue'),
           meta: { title: '编辑模板' }
         }
+
       ]
     },
     {

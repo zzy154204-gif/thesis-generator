@@ -1,3 +1,4 @@
+<!-- src/views/teacher/ReviewDetail.vue -->
 <template>
   <DefaultLayout>
     <div class="review-detail">
@@ -16,9 +17,9 @@
       <!-- 论文信息 -->
       <div class="paper-info">
         <el-descriptions :column="4" border size="small">
-          <el-descriptions-item label="学生">{{ paper?.studentName || '未知' }}</el-descriptions-item>
+          <!--el-descriptions-item label="学生">{{ paper?.studentName || '未知' }}</el-descriptions-item-->
           <el-descriptions-item label="学号">{{ paper?.studentId || '未知' }}</el-descriptions-item>
-          <el-descriptions-item label="课程">{{ paper?.course || '未知' }}</el-descriptions-item>
+          <!--el-descriptions-item label="课程">{{ paper?.course || '未知' }}</el-descriptions-item-->
           <el-descriptions-item label="提交时间">{{ formatDate(paper?.submittedAt) }}</el-descriptions-item>
         </el-descriptions>
       </div>
@@ -33,11 +34,48 @@
               {{ showSidebar ? '隐藏批注' : '显示批注' }}
             </el-button>
           </div>
-          <div class="preview-content" v-loading="loading">
-            <div class="paper-content">
+          <div
+            class="preview-content"
+            v-loading="loading"
+            @mouseup="handleTextSelection"
+          >
+            <!--div class="paper-content" ref="paperContentRef">
               <h2>{{ paper?.title }}</h2>
               <p><strong>摘要：</strong>{{ paper?.abstract || '暂无摘要' }}</p>
               <div v-html="paper?.content || '<p>论文内容加载中...</p>'"></div>
+            </div-->
+
+            <!-- 浮动批注输入框 -->
+            <div
+              v-if="showAnnotationInput"
+              class="floating-annotation-input"
+              :style="{
+                left: annotationInputPosition.x + 'px',
+                top: annotationInputPosition.y + 'px',
+              }"
+              ref="annotationInputRef"
+            >
+              <el-input
+                v-model="annotationContent"
+                type="textarea"
+                :rows="3"
+                placeholder="请输入批注内容..."
+                maxlength="200"
+                show-word-limit
+                ref="annotationTextareaRef"
+                @keydown.esc="cancelAnnotation"
+              />
+              <div class="floating-actions">
+                <el-button size="small" @click="cancelAnnotation">取消</el-button>
+                <el-button
+                  size="small"
+                  type="primary"
+                  :loading="annotationSaving"
+                  @click="saveAnnotation"
+                >
+                  确定
+                </el-button>
+              </div>
             </div>
           </div>
         </div>
@@ -46,7 +84,9 @@
         <div class="annotation-sidebar" v-show="showSidebar">
           <div class="sidebar-header">
             <span>💬 批注 ({{ annotations.length }})</span>
-            <el-button size="small" type="primary" @click="startAddAnnotation">+ 添加批注</el-button>
+            <el-button size="small" type="primary" @click="startAddAnnotation">
+              + 添加批注
+            </el-button>
           </div>
           <div class="annotation-list" v-loading="annotationLoading">
             <div v-for="ann in annotations" :key="ann.id" class="annotation-item">
@@ -138,7 +178,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
@@ -154,6 +194,7 @@ import {
   type ReviewRecord,
   type Annotation,
 } from '@/api/review'
+import { getPaper } from '@/api/paper'
 
 const router = useRouter()
 const route = useRoute()
@@ -172,6 +213,22 @@ const editDialogVisible = ref(false)
 const editLoading = ref(false)
 const editContent = ref('')
 const editingAnnotationId = ref<number | null>(null)
+
+// ===== 浮动批注状态 =====
+const showAnnotationInput = ref(false)
+const annotationSaving = ref(false)
+const annotationContent = ref('')
+const annotationInputPosition = ref({ x: 0, y: 0 })
+const paperContentRef = ref<HTMLElement | null>(null)
+const annotationInputRef = ref<HTMLElement | null>(null)
+const annotationTextareaRef = ref<any>(null)
+
+const selectedTextInfo = ref<{
+  text: string
+  startOffset: number
+  endOffset: number
+  sectionId: number
+} | null>(null)
 
 // ===== 数据 =====
 const paper = ref<{
@@ -198,7 +255,6 @@ function formatDate(date: string | undefined | null) {
   return new Date(date).toLocaleString('zh-CN')
 }
 
-// ===== 加载数据 =====
 async function fetchData() {
   const id = route.params.id
   if (!id) {
@@ -209,32 +265,33 @@ async function fetchData() {
   loading.value = true
 
   try {
-    // 1. 获取批阅历史（获取论文基本信息和批阅状态）
+    // 1. 获取论文详情（返回 Thesis 类型）
+    const paperRes = await getPaper(paperId.value)
+    const thesis = paperRes.data  // 类型：Thesis
+
+    // 2. 获取批阅历史
     const historyRes = await getReviewHistory(paperId.value)
     const records = historyRes.data || []
-
-    // 取最新的批阅记录作为当前状态
     const latestRecord = records.length > 0 ? records[0] : null
 
-    // 构建 paper 对象（后端 ReviewRecord 没有论文标题和学生信息，需要从其他地方获取）
-    // TODO: 如果后端有 /api/v1/theses/{id} 接口，可以在这里调用获取论文详情
-    // 目前使用模拟数据占位，等后端补充接口后替换
-    paper.value = {
-      id: paperId.value,
-      title: `论文 #${paperId.value}`, // 临时占位，等待后端提供论文详情接口
-      studentName: `学生 (ID: ${latestRecord?.thesisId || paperId.value})`,
-      studentId: `学号 (ID: ${latestRecord?.thesisId || paperId.value})`,
-      course: '课程名称', // 临时占位
-      status: latestRecord?.action === 'REVIEWED' ? 'APPROVED' : 'SUBMITTED',
-      version: records.length,
-      abstract: '本文研究了相关技术...',
-      content: '<p>论文正文内容加载中...</p>',
-      submittedAt: latestRecord?.createdAt || new Date().toISOString(),
-    }
-
-    // 2. 获取批注列表
+    // 3. 获取批注列表
     const annRes = await getAnnotations(paperId.value)
     annotations.value = annRes.data || []
+
+    // 4. 构建 paper 对象（使用 Thesis 类型中的字段）
+    paper.value = {
+      id: thesis.id,
+      title: thesis.title || `论文 #${thesis.id}`,
+      status: thesis.status || 'SUBMITTED',
+      studentId: thesis.studentId?.toString() || '未知',
+      //studentName: `学生 ${thesis.studentId}`,  // 临时，等用户接口
+      //course: `课程 #${thesis.collegeId || '未知'}`,  // 临时，等课程接口
+      version: records.length,
+      submittedAt: thesis.updatedAt || latestRecord?.createdAt || new Date().toISOString(),
+      // abstract 和 content 不在 Thesis 类型中，暂时用默认值
+      //abstract: '暂无摘要',
+      //content: '<p>论文正文加载中...</p>',
+    }
   } catch (error) {
     console.error('加载数据失败:', error)
     ElMessage.error('加载数据失败')
@@ -248,10 +305,101 @@ function toggleSidebar() {
   showSidebar.value = !showSidebar.value
 }
 
-// ===== 添加批注 =====
+// ===== 开始添加批注（点击按钮） =====
 function startAddAnnotation() {
-  // TODO: 实现选中文字添加批注功能
   ElMessage.info('请先在论文预览区选中文字，再添加批注')
+}
+
+// ===== 处理文本选择 =====
+function handleTextSelection() {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+    if (showAnnotationInput.value) {
+      showAnnotationInput.value = false
+    }
+    return
+  }
+
+  const selectedText = selection.toString().trim()
+  if (!selectedText) return
+
+  const range = selection.getRangeAt(0)
+  const preSelectionRange = range.cloneRange()
+  const contentEl = paperContentRef.value
+  if (!contentEl) return
+
+  preSelectionRange.selectNodeContents(contentEl)
+  preSelectionRange.setEnd(range.startContainer, range.startOffset)
+  const startOffset = preSelectionRange.toString().length
+
+  const currentSectionId = 1
+
+  selectedTextInfo.value = {
+    text: selectedText,
+    startOffset: startOffset,
+    endOffset: startOffset + selectedText.length,
+    sectionId: currentSectionId,
+  }
+
+  const rect = range.getBoundingClientRect()
+  const containerRect = contentEl.getBoundingClientRect()
+
+  annotationInputPosition.value = {
+    x: rect.left - containerRect.left,
+    y: rect.bottom - containerRect.top + 8,
+  }
+
+  annotationContent.value = ''
+  showAnnotationInput.value = true
+
+  nextTick(() => {
+    annotationTextareaRef.value?.focus()
+  })
+}
+
+// ===== 取消批注 =====
+function cancelAnnotation() {
+  showAnnotationInput.value = false
+  annotationContent.value = ''
+  selectedTextInfo.value = null
+  window.getSelection()?.removeAllRanges()
+}
+
+// ===== 保存批注 =====
+async function saveAnnotation() {
+  if (!annotationContent.value.trim()) {
+    ElMessage.warning('请输入批注内容')
+    return
+  }
+  if (!selectedTextInfo.value) {
+    ElMessage.warning('请先选中文字')
+    return
+  }
+
+  annotationSaving.value = true
+  try {
+    const { text, startOffset, sectionId } = selectedTextInfo.value
+
+    await addAnnotation({
+      thesisId: paperId.value,
+      sectionId: sectionId,
+      startOffset: startOffset,
+      textLength: text.length,
+      selectedText: text,
+      content: annotationContent.value.trim(),
+    })
+
+    ElMessage.success('批注已添加')
+
+    const annRes = await getAnnotations(paperId.value)
+    annotations.value = annRes.data || []
+
+    cancelAnnotation()
+  } catch {
+    ElMessage.error('添加批注失败')
+  } finally {
+    annotationSaving.value = false
+  }
 }
 
 // ===== 编辑批注 =====
@@ -273,7 +421,7 @@ async function confirmEdit() {
   editLoading.value = true
   try {
     await updateAnnotation(id, editContent.value.trim())
-    // 更新本地列表
+
     const index = annotations.value.findIndex((a) => a.id === id)
     if (index !== -1) {
       annotations.value[index].content = editContent.value.trim()
@@ -304,19 +452,6 @@ function handleDeleteAnnotation(annotationId: number) {
     })
     .catch(() => {})
 }
-
-// ===== 暂存（后端暂无 /draft 接口，暂不可用） =====
-// async function saveDraft() {
-//   draftLoading.value = true
-//   try {
-//     // 后端暂无 /draft 接口
-//     ElMessage.warning('暂存功能开发中')
-//   } catch {
-//     ElMessage.error('暂存失败')
-//   } finally {
-//     draftLoading.value = false
-//   }
-// }
 
 // ===== 退回 =====
 function handleReturn() {
@@ -434,10 +569,12 @@ onMounted(fetchData)
     flex: 1;
     overflow-y: auto;
     padding: 20px;
+    position: relative;
   }
 }
 
 .paper-content {
+  position: relative;
   max-width: 700px;
   margin: 0 auto;
   font-size: 14px;
@@ -454,6 +591,25 @@ onMounted(fetchData)
   }
   p {
     margin: 8px 0;
+  }
+}
+
+.floating-annotation-input {
+  position: absolute;
+  z-index: 1000;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  padding: 12px;
+  width: 320px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  min-width: 280px;
+
+  .floating-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
   }
 }
 
