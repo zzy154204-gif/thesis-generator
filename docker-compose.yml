@@ -1,0 +1,74 @@
+# ============================================
+# 论文生成系统 - Docker Compose
+#
+# 环境变量文件：创建 .env 文件自定义密码等
+#   DB_PASSWORD=your_secure_password
+#   JWT_SECRET=your_jwt_secret
+#
+# 使用方法:
+#   docker compose up -d              # 构建并启动所有服务
+#   docker compose down               # 停止服务
+#   docker compose down -v            # 停止服务并删除数据卷
+#   docker compose logs -f            # 查看日志
+#   docker compose logs -f backend    # 只看后端日志
+# ============================================
+name: thesis-generator
+
+services:
+  # ---- 数据库 ----
+  db:
+    image: postgres:16-alpine
+    container_name: tg-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: thesis_generator
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-123456}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d thesis_generator"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---- 后端 Spring Boot ----
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tg-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/thesis_generator
+      SPRING_DATASOURCE_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      JWT_SECRET: ${JWT_SECRET:-YourJwtSecretKeyForThesisGenerator2026PleaseChangeThisInProduction}
+      APP_UPLOAD_DIR: /app/uploads/images
+      LIBREOFFICE_PATH: /usr/bin/libreoffice
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    ports:
+      - "8080:8080"
+    volumes:
+      - uploads:/app/uploads
+
+  # ---- 前端 Nginx ----
+  frontend:
+    build:
+      context: .
+      dockerfile: thesis-generator-web/Dockerfile
+    container_name: tg-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  pgdata:
+  uploads:

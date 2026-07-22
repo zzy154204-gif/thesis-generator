@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.idea
+*.iml
+.vscode
+
+# Maven local (not the wrapper)
+.mvn/wrapper/maven-wrapper.jar
+
+# Build output
+target/
+thesis-generator-web/node_modules/
+thesis-generator-web/dist/
+thesis-generator-web/.vite/
+
+# Data / uploads
+uploads/
+exports/
+dlc/
+
+# Large test files
+demo.docx
+论文生成系统.md
+HELP.md
+redis-binaries/
+
+# Docker files (don't need inside build)
+docker-compose.yml
+.dockerignore
