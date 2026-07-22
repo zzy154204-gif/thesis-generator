@@ -166,7 +166,7 @@ docker compose ps
 
 ```
 NAME          IMAGE                       SERVICE    STATUS         PORTS
-tg-backend    thesis-generator-backend    backend    Up             0.0.0.0:8080->8080/tcp
+tg-backend    thesis-generator-backend    backend    Up             0.0.0.0:8082->8080/tcp
 tg-db         postgres:16-alpine          db         Up (healthy)   0.0.0.0:5433->5432/tcp
 tg-frontend   thesis-generator-frontend   frontend   Up             0.0.0.0:8081->80/tcp
 ```
