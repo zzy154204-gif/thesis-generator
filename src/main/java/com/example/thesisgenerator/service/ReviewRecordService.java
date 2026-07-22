@@ -39,8 +39,8 @@ public class ReviewRecordService {
         }
 
         // 操作类型校验
-        if (!"REVIEWED".equals(action) && !"RETURNED".equals(action)) {
-            throw new BusinessException(400, "无效的批阅操作: " + action + "，有效值: REVIEWED, RETURNED");
+        if (!"REVIEWED".equals(action) && !"RETURNED".equals(action) && !"DRAFT".equals(action)) {
+            throw new BusinessException(400, "无效的批阅操作: " + action + "，有效值: REVIEWED, RETURNED, DRAFT");
         }
 
         ReviewRecord record = new ReviewRecord();
@@ -52,6 +52,11 @@ public class ReviewRecordService {
         record.setAction(action);
         record.setReturnReason(returnReason);
         record = reviewRecordRepository.save(record);
+
+        // 暂存（DRAFT）不改变论文状态
+        if ("DRAFT".equals(action)) {
+            return record;
+        }
 
         // 更新论文状态
         if ("REVIEWED".equals(action)) {

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { Thesis, ThesisSection } from '@/types/api'
+import type { Thesis, ThesisSection } from '@/types'
 import { getPapers, getPaper } from '@/api/paper'
 import { getSections } from '@/api/section'
 

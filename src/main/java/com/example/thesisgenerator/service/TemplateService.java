@@ -80,6 +80,11 @@ public class TemplateService {
         return versionRepository.findByTemplateIdOrderByCreatedAtDesc(templateId);
     }
 
+    public TemplateVersion getVersionById(Long versionId) {
+        return versionRepository.findById(versionId)
+                .orElseThrow(() -> new BusinessException(404, "版本不存在: " + versionId));
+    }
+
     @Transactional
     public TemplateVersion createVersion(Long templateId) {
         TemplateVersion current = versionRepository

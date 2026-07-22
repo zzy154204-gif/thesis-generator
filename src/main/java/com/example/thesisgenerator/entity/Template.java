@@ -25,6 +25,9 @@ public class Template {
     @Column(nullable = false)
     private Boolean enabled = true;
 
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

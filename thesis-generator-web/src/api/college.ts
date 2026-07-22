@@ -1,12 +1,22 @@
 import request from './request'
-import type { ApiResult, College } from '@/types/api'
+import type { ApiResult, College } from '@/types'
 
-/** 获取学院列表 */
-export function getColleges(): Promise<ApiResult<College[]>> {
-  return request.get('/colleges')
+export function getColleges() {
+  return request.get<unknown, ApiResult<College[]>>('/colleges')
 }
 
-/** 获取学院详情 */
-export function getCollege(id: number): Promise<ApiResult<College>> {
-  return request.get(`/colleges/${id}`)
+export function getCollege(id: number) {
+  return request.get<unknown, ApiResult<College>>(`/colleges/${id}`)
+}
+
+export function createCollege(data: { name: string; code: string }) {
+  return request.post<unknown, ApiResult<College>>('/colleges', data)
+}
+
+export function updateCollege(id: number, data: { name: string; code: string }) {
+  return request.put<unknown, ApiResult<College>>(`/colleges/${id}`, data)
+}
+
+export function deleteCollege(id: number) {
+  return request.delete<unknown, ApiResult<null>>(`/colleges/${id}`)
 }

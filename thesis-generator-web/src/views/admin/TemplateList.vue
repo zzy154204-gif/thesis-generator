@@ -1,48 +1,47 @@
 <template>
   <DefaultLayout>
-    <div class="template-list">
-      <div class="page-header">
-        <h3>模板管理</h3>
-        <el-button type="primary" @click="router.push('/admin/templates/new')">
-          <el-icon><Plus /></el-icon> 新建模板
-        </el-button>
+    <div class="page">
+      <div class="header">
+        <h2>模板管理</h2>
+        <el-button type="primary" :icon="Plus" @click="router.push('/admin/templates/new')">新建模板</el-button>
       </div>
 
-      <el-tabs v-model="activeType" @tab-change="fetchData">
-        <el-tab-pane label="全部" name="" />
-        <el-tab-pane label="毕业论文" name="GRADUATION" />
-        <el-tab-pane label="课程论文" name="COURSE" />
-        <el-tab-pane label="项目论文" name="PROJECT" />
-      </el-tabs>
+      <div class="toolbar">
+        <el-input v-model="keyword" placeholder="搜索模板..." :prefix-icon="Search" clearable style="width:260px" @input="onSearch" />
+        <el-select v-model="typeFilter" placeholder="类型" clearable style="width:120px" @change="fetch">
+          <el-option label="毕业论文" value="GRADUATION" />
+          <el-option label="课程论文" value="COURSE" />
+          <el-option label="项目报告" value="PROJECT" />
+        </el-select>
+      </div>
 
-      <el-table :data="tableData" border v-loading="loading" style="width: 100%">
-        <el-table-column prop="id" label="ID" width="60" align="center" />
-        <el-table-column prop="name" label="模板名称" min-width="180" />
-        <el-table-column prop="type" label="类型" width="100" align="center">
+      <el-table :data="list" v-loading="loading" stripe>
+        <el-table-column prop="name" label="模板名称" min-width="200" />
+        <el-table-column prop="type" label="类型" width="100">
+          <template #default="{ row }">{{ typeLabel(row.type) }}</template>
+        </el-table-column>
+        <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="enabled" label="状态" width="80">
           <template #default="{ row }">
-            <el-tag>{{ typeLabel(row.type) }}</el-tag>
+            <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '启用' : '停用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag :type="row.enabled !== false ? 'success' : 'info'" size="small">
-              {{ row.enabled !== false ? '启用' : '停用' }}
-            </el-tag>
-          </template>
+        <el-table-column prop="updatedAt" label="更新" width="140">
+          <template #default="{ row }">{{ row.updatedAt?.split('T')[0] }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="200" align="center">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <el-switch
-              :model-value="row.enabled !== false"
-              size="small"
-              @change="toggleStatus(row)"
-              style="margin-right: 8px"
-            />
-            <el-button type="primary" link @click="router.push(`/admin/templates/${row.id}`)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button text type="primary" size="small" @click="router.push(`/admin/templates/${row.id}`)">编辑</el-button>
+            <el-button text type="primary" size="small" @click="handleDuplicate(row)">复制</el-button>
+            <el-button text :type="row.enabled ? 'warning' : 'success'" size="small" @click="handleToggle(row)">
+              {{ row.enabled ? '停用' : '启用' }}
+            </el-button>
+            <el-button text type="danger" size="small" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
+
+      <el-empty v-if="!loading && !list.length" description="暂无模板" :image-size="120" />
     </div>
   </DefaultLayout>
 </template>
@@ -51,70 +50,65 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Search } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
-import { getAdminTemplates, toggleTemplateStatus, deleteTemplate } from '@/api/template'
+import { getAdminTemplates, toggleTemplateStatus, deleteAdminTemplate, duplicateTemplate } from '@/api/admin'
+import type { Template } from '@/types'
 
 const router = useRouter()
 const loading = ref(false)
-const activeType = ref('')
-const tableData = ref<any[]>([])
+const list = ref<Template[]>([])
+const keyword = ref('')
+const typeFilter = ref('')
 
-function typeLabel(type: string) {
-  const map: Record<string, string> = { GRADUATION: '毕业论文', COURSE: '课程论文', PROJECT: '项目论文' }
-  return map[type] || type
-}
+function typeLabel(t: string) { return t === 'GRADUATION' ? '毕业论文' : t === 'COURSE' ? '课程论文' : '项目报告' }
 
-async function fetchData() {
+let timer: any = null
+function onSearch() { clearTimeout(timer); timer = setTimeout(fetch, 300) }
+
+async function fetch() {
   loading.value = true
   try {
-    const params: any = {}
-    if (activeType.value) params.type = activeType.value
-    const res = await getAdminTemplates(params)
-    tableData.value = res.data || []
-  } catch {
-    ElMessage.error('加载模板列表失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-async function toggleStatus(item: any) {
-  try {
-    const newStatus = item.enabled !== false ? 'DISABLED' : 'ENABLED'
-    await toggleTemplateStatus(item.id, newStatus as any)
-    item.enabled = newStatus === 'ENABLED'
-    ElMessage.success(`已${item.enabled ? '启用' : '停用'}`)
-  } catch {
-    ElMessage.error('操作失败')
-  }
-}
-
-async function handleDelete(row: any) {
-  try {
-    await ElMessageBox.confirm(`确定要删除模板【${row.name}】吗？`, '警告', {
-      confirmButtonText: '确定删除',
-      type: 'warning',
+    const res = await getAdminTemplates({
+      keyword: keyword.value || undefined,
+      type: typeFilter.value || undefined,
     })
-    await deleteTemplate(row.id)
-    ElMessage.success('删除成功')
-    fetchData()
-  } catch {
-    // 用户取消
-  }
+    list.value = res.data || []
+  } catch { /* handled */ }
+  finally { loading.value = false }
 }
 
-onMounted(fetchData)
+async function handleToggle(t: Template) {
+  try {
+    await toggleTemplateStatus(t.id, t.enabled ? 'DISABLED' : 'ENABLED')
+    ElMessage.success(t.enabled ? '已停用' : '已启用')
+    await fetch()
+  } catch { /* handled */ }
+}
+
+async function handleDelete(t: Template) {
+  try {
+    await ElMessageBox.confirm(`确定删除模板"${t.name}"？`, '确认', { type: 'warning' })
+    await deleteAdminTemplate(t.id)
+    ElMessage.success('已删除')
+    await fetch()
+  } catch { /* 取消 */ }
+}
+
+async function handleDuplicate(t: Template) {
+  try {
+    await duplicateTemplate(t.id)
+    ElMessage.success('已复制')
+    await fetch()
+  } catch { /* handled */ }
+}
+
+onMounted(fetch)
 </script>
 
 <style scoped lang="scss">
-.template-list {
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    h3 { margin: 0; }
-  }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;
+  h2 { font-size: 22px; font-weight: 700; margin: 0; }
 }
+.toolbar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
 </style>

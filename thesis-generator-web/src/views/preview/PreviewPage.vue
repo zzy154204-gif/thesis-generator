@@ -1,93 +1,115 @@
 <template>
   <DefaultLayout>
-    <div class="preview-page">
-      <div class="preview-toolbar">
-        <el-button text :icon="ArrowLeft" @click="handleClose">关闭预览</el-button>
-        <span class="title">{{ paper?.title || '论文预览' }}</span>
-        <el-button type="primary" :icon="Download" @click="handleExport">导出</el-button>
+    <div class="page" v-if="paper">
+      <div class="toolbar">
+        <el-button text :icon="ArrowLeft" @click="router.push(`/editor/${paperId}`)">返回编辑</el-button>
+        <el-button text :icon="Edit" @click="router.push(`/editor/${paperId}`)">继续编辑</el-button>
+        <el-button :icon="Download" @click="handleExport('DOCX')">导出 DOCX</el-button>
+        <el-button :icon="Download" @click="handleExport('PDF')">导出 PDF</el-button>
+        <el-button type="primary" :icon="Upload" @click="handleSubmit" v-if="paper.status !== 'SUBMITTED'">提交</el-button>
+        <el-button :icon="Close" @click="handleWithdraw" v-if="paper.status === 'SUBMITTED'">撤回提交</el-button>
       </div>
-      <div class="preview-content">
-        <div class="paper-a4" v-if="previewHtml" v-html="previewHtml" />
-        <el-empty v-else description="暂无预览内容" :image-size="160" />
-      </div>
+
+      <el-card class="preview-card">
+        <div class="paper-header">
+          <h1 class="paper-title">{{ paper.title }}</h1>
+          <div class="paper-meta">
+            <span>状态：<el-tag :type="statusTagType(paper.status)" size="small">{{ statusLabel(paper.status) }}</el-tag></span>
+            <span>更新：{{ relativeTime(paper.updatedAt) }}</span>
+          </div>
+        </div>
+
+        <el-divider />
+
+        <div v-if="!sections.length" class="empty"><el-empty description="暂无章节内容" :image-size="100" /></div>
+
+        <div v-for="section in sections" :key="section.id" class="section-block">
+          <h2 class="section-title">{{ section.title }}</h2>
+          <div class="section-content" v-html="section.content || emptyHtml" />
+        </div>
+      </el-card>
     </div>
   </DefaultLayout>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { ArrowLeft, Download } from '@element-plus/icons-vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, Edit, Download, Upload, Close } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { usePaperStore } from '@/stores/paper'
-import { ElMessage } from 'element-plus'
+import { statusLabel, statusTagType, relativeTime } from '@/utils/format'
+import { downloadExport } from '@/api/paper'
+import { submitThesis, withdrawSubmission } from '@/api/submission'
+import type { ThesisSection } from '@/types'
 
 const route = useRoute()
-const paperStore = usePaperStore()
+const router = useRouter()
+const store = usePaperStore()
+const paperId = Number(route.params.paperId)
 
-const paper = computed(() => paperStore.currentPaper)
-const previewHtml = ref('')
+const emptyHtml = ref('<p style="color:#ccc">（空）</p>')
+const paper = ref(store.currentPaper)
+const sections = ref<ThesisSection[]>([])
 
-function handleExport() {
-  // TODO: 打开导出对话框或直接触发导出
-  ElMessage.info('导出功能开发中')
+async function handleExport(format: 'DOCX' | 'PDF') {
+  try {
+    await downloadExport(paperId, format)
+    ElMessage.success(`论文已导出为 ${format}`)
+  } catch (e: any) {
+    ElMessage.error(e.message || '导出失败')
+  }
 }
 
-function handleClose() {
-  window.close()
+async function handleSubmit() {
+  try {
+    await ElMessageBox.confirm('确定提交论文吗？', '确认', { type: 'info', confirmButtonText: '提交', cancelButtonText: '取消' })
+    await submitThesis(paperId)
+    ElMessage.success('已提交')
+    await store.fetchPaper(paperId)
+  } catch { /* 取消 */ }
+}
+
+/** 撤回提交 */
+async function handleWithdraw() {
+  try {
+    await ElMessageBox.confirm('确定撤回提交吗？撤回后论文将回到草稿状态，可继续编辑后重新提交。', '确认撤回', {
+      type: 'warning', confirmButtonText: '撤回', cancelButtonText: '取消',
+    })
+    await withdrawSubmission(paperId)
+    ElMessage.success('已撤回，论文回到草稿状态')
+    await store.fetchPaper(paperId)
+  } catch { /* 取消 */ }
 }
 
 onMounted(async () => {
-  const paperId = Number(route.params.paperId)
-  if (paperId) {
-    await paperStore.fetchPaper(paperId)
-    await paperStore.fetchSections(paperId)
-    // 生成简单的 HTML 预览
-    previewHtml.value = paperStore.sections
-      .map((s) => `<h2>${s.title}</h2><div>${s.content || '（暂无内容）'}</div>`)
-      .join('<br/>')
-  }
+  await store.fetchPaper(paperId)
+  paper.value = store.currentPaper
+  await store.fetchSections(paperId)
+  sections.value = store.sections
 })
 </script>
 
-<script lang="ts">
-import { computed } from 'vue'
-</script>
-
 <style scoped lang="scss">
-.preview-page {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 56px);
-}
+.page { max-width: 800px; margin: 0 auto; }
 
-.preview-toolbar {
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
-  .title { font-size: 15px; font-weight: 600; }
-}
+.toolbar { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
 
-.preview-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-  display: flex;
-  justify-content: center;
-  background: #e9ecef;
-}
+.preview-card { padding: 0; }
+.paper-header { text-align: center; padding: 32px 40px 0; }
+.paper-title { font-size: 22px; font-weight: 700; color: var(--el-text-color-primary); margin-bottom: 12px; }
+.paper-meta { display: flex; justify-content: center; gap: 20px; font-size: 13px; color: var(--el-text-color-secondary); }
 
-.paper-a4 {
-  width: 210mm;
-  min-height: 297mm;
-  padding: 25mm 20mm;
-  background: #fff;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
-  font-size: 14px;
-  line-height: 1.8;
+.empty { padding: 60px 0; }
+
+.section-block { padding: 24px 40px; &:not(:last-child) { border-bottom: 1px solid var(--el-border-color-extra-light); } }
+.section-title { font-size: 18px; font-weight: 600; color: var(--el-text-color-primary); margin-bottom: 16px; }
+.section-content { font-size: 14px; line-height: 1.8; color: var(--el-text-color-regular);
+  :deep(img) { max-width: 100%; }
+  :deep(table) { width: 100%; border-collapse: collapse; margin: 1em 0;
+    th, td { border: 1px solid var(--el-border-color); padding: 8px; }
+    th { background: var(--el-fill-color); }
+  }
 }
 </style>

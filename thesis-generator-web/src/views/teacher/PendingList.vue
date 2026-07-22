@@ -1,170 +1,82 @@
 <template>
   <DefaultLayout>
-    <div class="pending-list">
-      <div class="page-header">
-        <h3>📝 待批阅论文</h3>
-        <el-badge :value="pendingCount" :hidden="!pendingCount">
-          <el-tag type="warning">待批阅</el-tag>
-        </el-badge>
+    <div class="page">
+      <div class="header">
+        <h2>待批阅论文</h2>
+        <span class="count" v-if="total">共 {{ total }} 篇</span>
       </div>
 
-      <!-- 搜索筛选 -->
-      <div class="filter-bar">
-        <el-input
-          v-model="keyword"
-          placeholder="搜索学生姓名 / 论文标题"
-          style="width: 240px"
-          clearable
-          @keyup.enter="fetchData"
-        />
-        <el-select v-model="courseFilter" placeholder="选择课程" clearable style="width: 160px">
-          <el-option label="软件工程" value="SE" />
-          <el-option label="数据结构" value="DS" />
-          <el-option label="操作系统" value="OS" />
-        </el-select>
-        <el-button type="primary" @click="fetchData">搜索</el-button>
-        <el-button @click="resetFilter">重置</el-button>
+      <div class="toolbar">
+        <el-input v-model="keyword" placeholder="搜索论文标题..." :prefix-icon="Search" clearable style="width:300px" @input="onSearch" />
       </div>
 
-      <!-- 表格 -->
-      <el-table :data="tableData" border v-loading="loading">
-        <el-table-column prop="title" label="论文标题" min-width="180" />
-        <el-table-column prop="studentName" label="学生" width="100" />
-        <el-table-column prop="studentId" label="学号" width="120" />
-        <el-table-column prop="course" label="课程" width="100" />
-        <el-table-column prop="submittedAt" label="提交时间" width="170">
-          <template #default="{ row }">
-            {{ new Date(row.submittedAt).toLocaleString('zh-CN') }}
-          </template>
+      <el-table :data="list" v-loading="loading" stripe @row-click="(r: any) => router.push(`/teacher/review/${r.id}`)">
+        <el-table-column prop="title" label="论文标题" min-width="260" show-overflow-tooltip>
+          <template #default="{ row }"><span class="link">{{ row.title }}</span></template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'SUBMITTED' ? 'warning' : 'primary'">
-              {{ row.status === 'SUBMITTED' ? '待批阅' : '批阅中' }}
-            </el-tag>
-          </template>
+        <el-table-column prop="studentName" label="学生" width="120" />
+        <el-table-column prop="studentId" label="学号" width="120" />
+        <el-table-column prop="submittedAt" label="提交时间" width="160">
+          <template #default="{ row }">{{ relativeTime(row.submittedAt) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link @click="enterReview(row.id)">批阅</el-button>
+            <el-button type="primary" size="small" @click.stop="router.push(`/teacher/review/${row.id}`)">批阅</el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <!-- 分页 -->
-      <el-pagination
-        v-model:current-page="page"
-        v-model:page-size="pageSize"
-        :total="total"
-        :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @current-change="fetchData"
-        @size-change="fetchData"
-        style="margin-top:20px;justify-content:flex-end"
-      />
+      <el-empty v-if="!loading && !list.length" :description="keyword ? '没有匹配的论文' : '暂没有待批阅的论文'" :image-size="140" />
+
+      <div v-if="total > size" class="pagination">
+        <el-pagination v-model:current-page="page" :page-size="size" :total="total" layout="prev,pager,next" background small @change="fetch" />
+      </div>
     </div>
   </DefaultLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
+import { relativeTime } from '@/utils/format'
+import { getPendingList } from '@/api/review'
 
 const router = useRouter()
 const loading = ref(false)
-const keyword = ref('')
-const courseFilter = ref('')
-const page = ref(1)
-const pageSize = ref(10)
+const list = ref<any[]>([])
 const total = ref(0)
-const tableData = ref<any[]>([])
+const page = ref(1)
+const size = ref(10)
+const keyword = ref('')
 
-// 待批阅数量（从数据中计算）
-const pendingCount = computed(() => tableData.value.filter((item) => item.status === 'SUBMITTED').length)
+let timer: any = null
+function onSearch() {
+  page.value = 1
+  clearTimeout(timer)
+  timer = setTimeout(fetch, 300)
+}
 
-async function fetchData() {
+async function fetch() {
   loading.value = true
   try {
-    // TODO: 调用真实 API
-    // const res = await reviewApi.getPendingList({
-    //   page: page.value,
-    //   size: pageSize.value,
-    //   keyword: keyword.value,
-    //   course: courseFilter.value,
-    // })
-    // tableData.value = res.data.list
-    // total.value = res.data.total
-
-    await new Promise((r) => setTimeout(r, 500))
-    tableData.value = [
-      {
-        id: 1,
-        title: '基于深度学习的图像分割研究',
-        studentName: '张三',
-        studentId: '2024001',
-        course: '软件工程',
-        status: 'SUBMITTED',
-        submittedAt: '2026-07-15T14:30:00',
-      },
-      {
-        id: 2,
-        title: '区块链技术在供应链中的应用',
-        studentName: '李四',
-        studentId: '2024002',
-        course: '数据结构',
-        status: 'REVIEWING',
-        submittedAt: '2026-07-14T10:20:00',
-      },
-      {
-        id: 3,
-        title: '基于Spring Boot的在线考试系统',
-        studentName: '王五',
-        studentId: '2024003',
-        course: '操作系统',
-        status: 'SUBMITTED',
-        submittedAt: '2026-07-13T16:45:00',
-      },
-    ]
-    total.value = tableData.value.length
-  } catch {
-    ElMessage.error('加载数据失败')
-  } finally {
-    loading.value = false
-  }
+    const res = await getPendingList({ page: page.value, size: size.value, keyword: keyword.value || undefined })
+    list.value = res.data.list || []
+    total.value = res.data.total || 0
+  } catch { /* handled */ }
+  finally { loading.value = false }
 }
 
-function resetFilter() {
-  keyword.value = ''
-  courseFilter.value = ''
-  page.value = 1
-  fetchData()
-}
-
-function enterReview(paperId: number) {
-  router.push(`/teacher/review/${paperId}`)
-}
-
-onMounted(fetchData)
+onMounted(fetch)
 </script>
 
 <style scoped lang="scss">
-.pending-list {
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    h3 { margin: 0; }
-  }
-
-  .filter-bar {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
+.header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px;
+  h2 { font-size: 22px; font-weight: 700; margin: 0; }
+  .count { font-size: 14px; color: var(--el-text-color-secondary); }
 }
+.toolbar { margin-bottom: 20px; }
+.link { font-weight: 500; color: var(--el-color-primary); cursor: pointer; }
+.pagination { display: flex; justify-content: center; margin-top: 24px; }
 </style>

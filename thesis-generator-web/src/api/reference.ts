@@ -1,49 +1,64 @@
 import request from './request'
-import type { ApiResult, Reference } from '@/types/api'
+import type { ApiResult, Reference } from '@/types'
 
-// 对齐后端 ReferenceController: /api/references
-
-/** 获取所有参考文献 */
-export function getReferences(): Promise<ApiResult<Reference[]>> {
-  return request.get('/references')
+export function getReferences() {
+  return request.get<unknown, ApiResult<Reference[]>>('/references')
 }
 
-/** 获取单条参考文献 */
-export function getReference(id: number): Promise<ApiResult<Reference>> {
-  return request.get(`/references/${id}`)
+export function getReference(id: number) {
+  return request.get<unknown, ApiResult<Reference>>(`/references/${id}`)
 }
 
-/** 新增参考文献 */
-export function createReference(data: Omit<Reference, 'id'>): Promise<ApiResult<Reference>> {
-  return request.post('/references', data)
+export function createReference(data: Omit<Reference, 'id'>) {
+  return request.post<unknown, ApiResult<Reference>>('/references', data)
 }
 
-/** 更新参考文献 */
-export function updateReference(id: number, data: Partial<Reference>): Promise<ApiResult<Reference>> {
-  return request.put(`/references/${id}`, data)
+export function updateReference(id: number, data: Partial<Reference>) {
+  return request.put<unknown, ApiResult<Reference>>(`/references/${id}`, data)
 }
 
-/** 删除参考文献 */
-export function deleteReference(id: number): Promise<ApiResult<void>> {
-  return request.delete(`/references/${id}`)
+export function deleteReference(id: number) {
+  return request.delete<unknown, ApiResult<null>>(`/references/${id}`)
 }
 
-/** 按作者搜索 */
-export function searchByAuthor(keyword: string): Promise<ApiResult<Reference[]>> {
-  return request.get('/references/search/author', { params: { keyword } })
+export function searchReferenceByAuthor(keyword: string) {
+  return request.get<unknown, ApiResult<Reference[]>>('/references/search/author', {
+    params: { keyword },
+  })
 }
 
-/** 按标题搜索 */
-export function searchByTitle(keyword: string): Promise<ApiResult<Reference[]>> {
-  return request.get('/references/search/title', { params: { keyword } })
+export function searchReferenceByTitle(keyword: string) {
+  return request.get<unknown, ApiResult<Reference[]>>('/references/search/title', {
+    params: { keyword },
+  })
 }
 
-/** 获取单条文献的 GB/T 7714 格式化文本 */
-export function formatReference(id: number): Promise<ApiResult<{ formatted: string }>> {
-  return request.get(`/references/${id}/format`)
+export function formatReference(id: number) {
+  return request.get<unknown, ApiResult<{ formatted: string }>>(`/references/${id}/format`)
 }
 
-/** 获取所有文献的格式化列表 */
-export function formatAllReferences(): Promise<ApiResult<string[]>> {
-  return request.get('/references/format/all')
+export function formatAllReferences() {
+  return request.get<unknown, ApiResult<string[]>>('/references/format/all')
+}
+
+/* ========== 论文学位参考文献关联 ========== */
+
+/** 获取论文已关联的参考文献 */
+export function getThesisReferences(thesisId: number) {
+  return request.get<unknown, ApiResult<any[]>>(`/papers/${thesisId}/references`)
+}
+
+/** 为论文添加一条参考文献 */
+export function addThesisReference(thesisId: number, referenceId: number) {
+  return request.post<unknown, ApiResult<any>>(`/papers/${thesisId}/references`, { referenceId })
+}
+
+/** 从论文中移除参考文献 */
+export function removeThesisReference(thesisId: number, id: number) {
+  return request.delete<unknown, ApiResult<null>>(`/papers/${thesisId}/references/${id}`)
+}
+
+/** 更新引用排序 */
+export function updateThesisReferenceOrder(thesisId: number, ids: number[]) {
+  return request.put<unknown, ApiResult<null>>(`/papers/${thesisId}/references/order`, { ids })
 }

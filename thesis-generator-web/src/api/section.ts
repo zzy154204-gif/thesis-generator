@@ -1,32 +1,26 @@
 import request from './request'
-import type { ApiResult, ThesisSection } from '@/types/api'
+import type { ApiResult, ThesisSection } from '@/types'
 
-/** 获取章节树 */
-export function getSections(paperId: number): Promise<ApiResult<ThesisSection[]>> {
-  return request.get(`/papers/${paperId}/sections`)
+export function getSections(thesisId: number) {
+  return request.get<unknown, ApiResult<ThesisSection[]>>(`/papers/${thesisId}/sections`)
 }
 
-/** 新增章节 */
-export function createSection(paperId: number, data: { title: string; parentId?: number }): Promise<ApiResult<ThesisSection>> {
-  return request.post(`/papers/${paperId}/sections`, data)
+export function getSection(thesisId: number, sectionId: number) {
+  return request.get<unknown, ApiResult<ThesisSection>>(`/papers/${thesisId}/sections/${sectionId}`)
 }
 
-/** 获取章节内容 */
-export function getSection(paperId: number, sectionId: number): Promise<ApiResult<ThesisSection>> {
-  return request.get(`/papers/${paperId}/sections/${sectionId}`)
+export function createSection(thesisId: number, data: { title: string; parentId?: number }) {
+  return request.post<unknown, ApiResult<ThesisSection>>(`/papers/${thesisId}/sections`, data)
 }
 
-/** 保存章节内容 */
-export function saveSection(paperId: number, sectionId: number, data: { content: string; title?: string }): Promise<ApiResult> {
-  return request.put(`/papers/${paperId}/sections/${sectionId}`, data)
+export function updateSection(thesisId: number, sectionId: number, data: { content?: string; title?: string }) {
+  return request.put<unknown, ApiResult<ThesisSection>>(`/papers/${thesisId}/sections/${sectionId}`, data)
 }
 
-/** 更新章节排序 */
-export function updateSectionsOrder(paperId: number, sectionIds: number[]): Promise<ApiResult> {
-  return request.put(`/papers/${paperId}/sections/order`, { sectionIds })
+export function updateSectionsOrder(thesisId: number, sectionIds: number[]) {
+  return request.put<unknown, ApiResult<null>>(`/papers/${thesisId}/sections/order`, { sectionIds })
 }
 
-/** 删除章节 */
-export function deleteSection(paperId: number, sectionId: number): Promise<ApiResult> {
-  return request.delete(`/papers/${paperId}/sections/${sectionId}`)
+export function deleteSection(thesisId: number, sectionId: number) {
+  return request.delete<unknown, ApiResult<null>>(`/papers/${thesisId}/sections/${sectionId}`)
 }

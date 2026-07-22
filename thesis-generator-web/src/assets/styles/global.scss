@@ -1,8 +1,5 @@
-// ========================================
-// 黄油纸主题 — 暖色复古学术风
-// ========================================
+/* ===== 黄油纸主题 — 暖色复古学术风 ===== */
 
-// ---- Element Plus CSS 变量覆盖 ----
 :root {
   --el-color-primary: #b76e3c;
   --el-color-primary-light-3: #c9874d;
@@ -21,7 +18,6 @@
   --el-text-color-regular: #6b5a48;
   --el-text-color-secondary: #8c7e6e;
   --el-text-color-placeholder: #b5a898;
-  --el-text-color-disabled: #ccc5b8;
 
   --el-border-color: #d4c9b8;
   --el-border-color-light: #e0d7c8;
@@ -39,19 +35,13 @@
 
   --el-mask-color: rgba(62, 46, 31, 0.4);
 
-  // 菜单/侧边栏专用
   --sidebar-bg: #3e2e1f;
   --sidebar-text: #c4b8a8;
   --sidebar-text-active: #f5efe8;
   --sidebar-hover: #4d3a28;
 }
 
-// ---- 基础全局样式 ----
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
@@ -66,13 +56,10 @@ body {
 a {
   color: var(--el-color-primary);
   text-decoration: none;
-  transition: color 0.2s;
   &:hover { color: var(--el-color-primary-light-3); }
 }
 
-// ---- Element Plus 组件微调 ----
-
-// 表格：去掉过多边框，柔和风格
+/* Element Plus 微调 */
 .el-table {
   --el-table-border-color: var(--el-border-color-light) !important;
   --el-table-header-bg-color: #f5efe8 !important;
@@ -81,23 +68,15 @@ a {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 1px 4px rgba(62, 46, 31, 0.06);
-
-  thead {
-    th {
-      font-weight: 600;
-      color: var(--el-text-color-primary);
-    }
-  }
+  thead th { font-weight: 600; color: var(--el-text-color-primary); }
 }
 
-// 卡片
 .el-card {
   border: none;
   border-radius: 10px;
   box-shadow: 0 2px 12px rgba(62, 46, 31, 0.06);
 }
 
-// 按钮
 .el-button--primary {
   --el-button-bg-color: var(--el-color-primary);
   --el-button-border-color: var(--el-color-primary);
@@ -107,25 +86,16 @@ a {
   --el-button-active-border-color: var(--el-color-primary-dark-2);
 }
 
-// 分页
 .el-pagination {
   --el-pagination-button-bg-color: transparent;
   --el-pagination-hover-color: var(--el-color-primary);
 }
 
-// 弹窗
 .el-dialog {
   --el-dialog-bg-color: var(--el-fill-color-blank);
   border-radius: 12px;
 }
 
-// 标签页
-.el-tabs {
-  --el-tabs-header-bg-color: transparent;
-  --el-tabs-active-color: var(--el-color-primary);
-}
-
-// 输入框
 .el-input, .el-select, .el-textarea {
   --el-input-bg-color: var(--el-fill-color-blank);
   --el-input-border-color: var(--el-border-color);
@@ -133,28 +103,10 @@ a {
   --el-input-focus-border-color: var(--el-color-primary);
 }
 
-// 开关
 .el-switch {
   --el-switch-on-color: var(--el-color-primary-light-3);
   --el-switch-off-color: var(--el-border-color);
 }
 
-// 徽标
-.el-badge {
-  --el-badge-bg-color: var(--el-color-danger);
-}
-
-// 步骤条
-.el-steps {
-  --el-step-title-font-size: 14px;
-}
-
-// 折叠过渡
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }

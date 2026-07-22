@@ -26,10 +26,15 @@ public class JwtUtil {
     }
 
     public String generateToken(Long userId, String username, String role) {
+        return generateToken(userId, username, role, username);
+    }
+
+    public String generateToken(Long userId, String username, String role, String realName) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("username", username);
         claims.put("role", role);
+        claims.put("realName", realName);
 
         return Jwts.builder()
                 .claims(claims)

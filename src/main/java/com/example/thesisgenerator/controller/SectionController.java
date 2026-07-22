@@ -29,7 +29,8 @@ public class SectionController {
     public Result<List<ThesisSection>> getSections(HttpServletRequest request,
                                                     @PathVariable("id") Long thesisId) {
         Long userId = (Long) request.getAttribute("userId");
-        return Result.ok(sectionService.getSections(thesisId, userId));
+        String role = (String) request.getAttribute("role");
+        return Result.ok(sectionService.getSections(thesisId, userId, role));
     }
 
     /**
@@ -56,7 +57,8 @@ public class SectionController {
                                             @PathVariable("id") Long thesisId,
                                             @PathVariable Long sectionId) {
         Long userId = (Long) request.getAttribute("userId");
-        return Result.ok(sectionService.getSection(thesisId, sectionId, userId));
+        String role = (String) request.getAttribute("role");
+        return Result.ok(sectionService.getSection(thesisId, sectionId, userId, role));
     }
 
     /**

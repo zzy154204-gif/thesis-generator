@@ -1,44 +1,47 @@
 <template>
   <DefaultLayout>
-    <div class="template-browse">
-      <div class="page-header">
-        <h3>模板库</h3>
+    <div class="page">
+      <div class="header">
+        <h2>模板库</h2>
+        <span class="count">共 {{ templates.length }} 个模板</span>
       </div>
 
-      <el-alert
-        title="选择模板后即可创建论文，系统将按模板预设的章节结构自动生成论文大纲。"
-        type="info"
-        show-icon
-        :closable="false"
-        style="margin-bottom: 20px"
-      />
+      <div class="toolbar">
+        <el-select v-model="typeFilter" placeholder="模板类型" clearable style="width:140px" @change="fetch">
+          <el-option label="毕业论文" value="GRADUATION" />
+          <el-option label="课程论文" value="COURSE" />
+          <el-option label="项目报告" value="PROJECT" />
+        </el-select>
+        <el-select v-model="collegeFilter" placeholder="所属学院" clearable filterable style="width:180px" @change="fetch">
+          <el-option v-for="c in colleges" :key="c.id" :label="c.name" :value="c.id" />
+        </el-select>
+      </div>
 
-      <el-tabs v-model="activeType" @tab-change="fetchData">
-        <el-tab-pane label="全部" name="" />
-        <el-tab-pane label="毕业论文" name="GRADUATION" />
-        <el-tab-pane label="课程论文" name="COURSE" />
-        <el-tab-pane label="项目论文" name="PROJECT" />
-      </el-tabs>
+      <el-empty v-if="!loading && !templates.length" description="暂无可用的模板" :image-size="140" />
 
-      <div class="card-grid" v-loading="loading">
-        <div v-for="item in tableData" :key="item.id" class="template-card">
-          <div class="card-header">
-            <span class="name">{{ item.name }}</span>
-            <el-tag size="small">{{ typeLabel(item.type) }}</el-tag>
-          </div>
-          <div class="card-body">
-            <p v-if="item.description" class="desc">{{ item.description }}</p>
-            <p v-else class="desc muted">暂无描述</p>
-          </div>
+      <div v-else class="grid">
+        <div v-for="t in templates" :key="t.id" class="card" @click="selectTemplate(t)">
+          <div class="card-badge">{{ typeLabel(t.type) }}</div>
+          <h3 class="card-title">{{ t.name }}</h3>
+          <p class="card-desc">{{ t.description || '暂无描述' }}</p>
           <div class="card-footer">
-            <el-button type="primary" @click="useTemplate(item)">使用此模板</el-button>
+            <span class="college">{{ collegeName(t.collegeId) }}</span>
+            <el-button type="primary" size="small" @click.stop="useTemplate(t)">使用此模板</el-button>
           </div>
         </div>
-
-        <div v-if="!tableData.length && !loading" class="empty-state">
-          <el-empty description="暂无可用的模板" />
-        </div>
       </div>
+
+      <!-- 选择模板确认对话框 -->
+      <el-dialog v-model="dialogVisible" title="使用模板" width="400px">
+        <p>确定使用模板 <strong>{{ selected?.name }}</strong> 创建论文吗？</p>
+        <p style="font-size:13px;color:var(--el-text-color-secondary);margin-top:8px">
+          系统将按模板结构自动生成章节框架
+        </p>
+        <template #footer>
+          <el-button @click="dialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="creating" @click="confirmUse">确定创建</el-button>
+        </template>
+      </el-dialog>
     </div>
   </DefaultLayout>
 </template>
@@ -49,92 +52,103 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { getAvailableTemplates } from '@/api/template'
+import { getColleges } from '@/api/college'
 import { createPaper } from '@/api/paper'
+import { getTemplateVersions } from '@/api/template'
+import type { Template, College } from '@/types'
 
 const router = useRouter()
-const loading = ref(false)
-const activeType = ref('')
-const tableData = ref<any[]>([])
+const loading = ref(true)
+const templates = ref<any[]>([])
+const colleges = ref<College[]>([])
+const typeFilter = ref('')
+const collegeFilter = ref<number | undefined>()
+const dialogVisible = ref(false)
+const selected = ref<any>(null)
+const creating = ref(false)
 
 function typeLabel(type: string) {
-  const map: Record<string, string> = { GRADUATION: '毕业论文', COURSE: '课程论文', PROJECT: '项目论文' }
-  return map[type] || type
+  return type === 'GRADUATION' ? '毕业论文' : type === 'COURSE' ? '课程论文' : '项目报告'
 }
 
-async function fetchData() {
+function collegeName(id?: number) {
+  if (!id) return '通用'
+  return colleges.value.find(c => c.id === id)?.name || '通用'
+}
+
+async function fetch() {
   loading.value = true
   try {
     const params: any = {}
-    if (activeType.value) params.type = activeType.value
+    if (typeFilter.value) params.type = typeFilter.value
+    if (collegeFilter.value) params.collegeId = collegeFilter.value
     const res = await getAvailableTemplates(params)
-    tableData.value = res.data || []
-  } catch {
-    ElMessage.error('加载模板失败')
-  } finally {
-    loading.value = false
-  }
+    // 附加版本信息
+    const all = await Promise.all((res.data || []).map(async (t) => {
+      try {
+        const verRes = await getTemplateVersions(t.id)
+        const active = (verRes.data || []).find(v => v.isCurrent)
+        return { ...t, versionId: active?.id }
+      } catch { return { ...t, versionId: undefined } }
+    }))
+    templates.value = all
+  } catch { /* handled */ }
+  finally { loading.value = false }
 }
 
-async function useTemplate(template: any) {
+async function selectTemplate(t: any) {
+  selected.value = t
+  dialogVisible.value = true
+}
+
+function useTemplate(t: any) {
+  selected.value = t
+  dialogVisible.value = true
+}
+
+async function confirmUse() {
+  if (!selected.value) return
+  creating.value = true
   try {
     const res = await createPaper({
-      title: '未命名论文',
-      templateVersionId: template.id,
-      collegeId: template.collegeId,
+      title: selected.value.name + '论文',
+      templateVersionId: selected.value.versionId,
     })
-    ElMessage.success('论文创建成功')
+    ElMessage.success('已创建并应用模板')
+    dialogVisible.value = false
     router.push(`/editor/${res.data.id}`)
-  } catch {
-    ElMessage.error('创建论文失败')
-  }
+  } catch { /* handled */ }
+  finally { creating.value = false }
 }
 
-onMounted(fetchData)
+onMounted(async () => {
+  const colRes = await getColleges()
+  colleges.value = colRes.data || []
+  await fetch()
+})
 </script>
 
 <style scoped lang="scss">
-.template-browse {
-  .page-header {
-    margin-bottom: 16px;
-    h3 { margin: 0; }
-  }
+.header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px;
+  h2 { font-size: 22px; font-weight: 700; margin: 0; }
+  .count { font-size: 14px; color: var(--el-text-color-secondary); }
+}
+.toolbar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+  @media (max-width:900px) { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width:600px) { grid-template-columns: 1fr; }
 }
 
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-  margin-top: 16px;
-}
-
-.template-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-
-  .card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    .name { font-weight: 600; font-size: 15px; }
-  }
-
-  .card-body {
-    .desc { font-size: 14px; color: #606266; margin: 0; line-height: 1.6; }
-    .muted { color: #c0c4cc; }
-  }
-
-  .card-footer {
-    margin-top: 16px;
-    padding-top: 12px;
-    border-top: 1px solid #ebeef5;
-  }
-}
-
-.empty-state {
-  grid-column: 1 / -1;
-  padding: 60px 0;
+.card {
+  background: var(--el-fill-color-blank); border-radius: 10px; padding: 20px;
+  border: 1px solid var(--el-border-color-light); cursor: pointer;
+  display: flex; flex-direction: column; transition: all 0.25s;
+  &:hover { box-shadow: 0 6px 20px rgba(62,46,31,0.10); transform: translateY(-2px); border-color: var(--el-color-primary-light-5); }
+  .card-badge { font-size: 11px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); display: inline-block; padding: 2px 8px; border-radius: 4px; margin-bottom: 10px; width: fit-content; }
+  .card-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+  .card-desc { font-size: 13px; color: var(--el-text-color-secondary); flex: 1; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 14px; }
+  .card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid var(--el-border-color-extra-light); }
+  .college { font-size: 12px; color: var(--el-text-color-secondary); }
 }
 </style>

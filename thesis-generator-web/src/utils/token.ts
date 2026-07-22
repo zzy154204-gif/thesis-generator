@@ -1,4 +1,4 @@
-const TOKEN_KEY = 'thesis_generator_token'
+const TOKEN_KEY = 'thesis_token'
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)

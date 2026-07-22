@@ -1,25 +1,22 @@
 <template>
-  <div class="default-layout">
+  <div class="layout">
     <!-- ===== 顶栏 ===== -->
-    <header class="app-header">
-      <div class="header-left">
-        <el-icon class="collapse-btn" @click="isCollapsed = !isCollapsed">
-          <Fold v-if="!isCollapsed" />
+    <header class="topbar">
+      <div class="topbar-left">
+        <el-icon class="menu-btn" @click="collapsed = !collapsed">
+          <Fold v-if="!collapsed" />
           <Expand v-else />
         </el-icon>
-        <router-link to="/papers" class="logo">📄 论文生成系统</router-link>
       </div>
-
-      <div class="header-right">
-        <el-dropdown @command="handleCommand">
-          <span class="user-info">
-            <el-avatar :size="30" icon="UserFilled" class="user-avatar" />
-            <span class="username">{{ authStore.user?.realName || '用户' }}</span>
+      <div class="topbar-right">
+        <el-dropdown @command="onCommand">
+          <span class="user-trigger">
+            <el-avatar :size="28" icon="UserFilled" class="avatar" />
+            <span class="username">{{ auth.user?.realName || '用户' }}</span>
           </span>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-              <el-dropdown-item command="exportHistory">导出历史</el-dropdown-item>
               <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -27,37 +24,49 @@
       </div>
     </header>
 
-    <!-- ===== 主体 ===== -->
-    <div class="body-wrap">
-      <!-- 侧边栏 -->
-      <aside class="app-sidebar" :class="{ collapsed: isCollapsed }">
+    <div class="body">
+      <!-- ===== 侧边栏 ===== -->
+      <aside class="sidebar" :class="{ collapsed }">
+        <!-- Logo 区域 -->
+        <div class="logo-area">
+          <div class="logo-icon">📄</div>
+          <span class="logo-text" v-show="!collapsed">论文生成系统</span>
+        </div>
+        <div class="logo-divider" v-show="!collapsed" />
+
+        <!-- 导航菜单 -->
         <el-menu
-          :default-active="route.path"
+          :default-active="activePath"
           router
-          :collapse="isCollapsed"
-          class="sidebar-menu"
+          :collapse="collapsed"
+          class="nav-menu"
         >
-          <template v-for="item in filteredMenus" :key="item.path">
-            <el-sub-menu v-if="item.children?.length" :index="item.path">
+          <template v-for="item in menus" :key="item.path">
+            <el-menu-item v-if="!item.children" :index="item.path">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <span>{{ item.label }}</span>
+            </el-menu-item>
+            <el-sub-menu v-else :index="item.path">
               <template #title>
                 <el-icon><component :is="item.icon" /></el-icon>
-                <span>{{ item.title }}</span>
+                <span>{{ item.label }}</span>
               </template>
-              <el-menu-item v-for="child in item.children!" :key="child.path" :index="child.path">
-                {{ child.title }}
+              <el-menu-item v-for="c in item.children" :key="c.path" :index="c.path">
+                {{ c.label }}
               </el-menu-item>
             </el-sub-menu>
-            <el-menu-item v-else :index="item.path">
-              <el-icon><component :is="item.icon" /></el-icon>
-              <span>{{ item.title }}</span>
-            </el-menu-item>
           </template>
         </el-menu>
+
+        <!-- 折叠状态下只显示缩略 Logo -->
+        <div class="logo-collapsed" v-show="collapsed">
+          <span class="logo-icon-small">📄</span>
+        </div>
       </aside>
 
-      <!-- 内容区 -->
-      <main class="app-main">
-        <div class="page-container">
+      <!-- ===== 内容区 ===== -->
+      <main class="main">
+        <div class="page">
           <slot />
         </div>
       </main>
@@ -69,128 +78,172 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { menuConfig } from '@/config/menu'
-import { Fold, Expand } from '@element-plus/icons-vue'
+import { Fold, Expand, Document, Files, Reading, School, ChatLineSquare, User } from '@element-plus/icons-vue'
 
-const authStore = useAuthStore()
+const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
-const isCollapsed = ref(false)
+const collapsed = ref(false)
 
-const filteredMenus = computed(() => {
-  const role = authStore.user?.role
-  return menuConfig.filter((item) => {
-    if (!item.roles) return true
-    return item.roles.includes(role || '')
-  })
+interface NavItem {
+  path: string
+  label: string
+  icon?: any
+  roles?: string[]
+  children?: NavItem[]
+}
+
+const allMenus: NavItem[] = [
+  { path: '/papers', label: '我的论文', icon: Document, roles: ['STUDENT'] },
+  { path: '/templates', label: '模板库', icon: Files, roles: ['STUDENT'] },
+  { path: '/references', label: '参考文献', icon: Reading, roles: ['STUDENT'] },
+  { path: '/teacher/review', label: '待批阅', icon: ChatLineSquare, roles: ['TEACHER'] },
+  { path: '/admin/colleges', label: '学院管理', icon: School, roles: ['ADMIN'] },
+  { path: '/admin/templates', label: '模板管理', icon: Files, roles: ['ADMIN'] },
+  { path: '/profile', label: '个人中心', icon: User },
+]
+
+const menus = computed(() =>
+  allMenus.filter(m => !m.roles || m.roles.includes(auth.role || ''))
+)
+
+/** 当前激活的菜单项：优先匹配路由，若路由不在菜单中则高亮第一项 */
+const activePath = computed(() => {
+  const matched = menus.value.find(m => route.path.startsWith(m.path))
+  return matched ? matched.path : (menus.value[0]?.path || '/papers')
 })
 
-function handleCommand(command: string) {
-  if (command === 'profile') router.push('/profile')
-  else if (command === 'exportHistory') router.push('/export-history')
-  else if (command === 'logout') {
-    authStore.logout()
-    router.push('/login')
+function onCommand(cmd: string) {
+  if (cmd === 'profile') router.push('/profile')
+  else if (cmd === 'logout') {
+    auth.logout().then(() => router.push('/login'))
   }
 }
 </script>
 
 <style scoped lang="scss">
-.default-layout {
+.layout {
   min-height: 100vh;
   background: var(--el-bg-color-page);
 }
 
 // ---- 顶栏 ----
-.app-header {
+.topbar {
   height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: #fdfbf8;
+  background: var(--el-fill-color-blank);
   border-bottom: 1px solid var(--el-border-color-light);
   position: sticky;
   top: 0;
   z-index: 100;
 
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .collapse-btn {
+  .menu-btn {
     font-size: 18px;
     cursor: pointer;
     color: var(--el-text-color-secondary);
-    transition: color 0.2s;
     &:hover { color: var(--el-color-primary); }
   }
 
-  .logo {
-    font-size: 17px;
-    font-weight: 600;
-    color: var(--el-color-primary);
-    text-decoration: none;
-    letter-spacing: 0.5px;
-  }
+  .topbar-right { display: flex; align-items: center; }
 
-  .header-right {
-    display: flex;
-    align-items: center;
-  }
-
-  .user-info {
+  .user-trigger {
     display: flex;
     align-items: center;
     gap: 8px;
     cursor: pointer;
     padding: 4px 10px;
     border-radius: 6px;
-    transition: background 0.2s;
     &:hover { background: var(--el-fill-color); }
     .username { font-size: 14px; color: var(--el-text-color-primary); }
   }
 
-  .user-avatar {
-    background: var(--el-color-primary-light-5);
-  }
+  .avatar { background: var(--el-color-primary-light-5); }
 }
 
-// ---- 主体：侧边栏 + 内容 ----
-.body-wrap {
+.body {
   display: flex;
   min-height: calc(100vh - 56px);
 }
 
 // ---- 侧边栏 ----
-.app-sidebar {
-  width: 200px;
-  background: var(--sidebar-bg);
+.sidebar {
+  width: 220px;
+  background: var(--sidebar-bg, #3e2e1f);
   transition: width 0.25s ease;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 
   &.collapsed { width: 64px; }
 
-  :deep(.sidebar-menu) {
+  // ---------- Logo 区域 ----------
+  .logo-area {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 18px;
+    flex-shrink: 0;
+  }
+
+  .logo-icon {
+    font-size: 26px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .logo-text {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--sidebar-text-active, #f5efe8);
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  .logo-divider {
+    height: 1px;
+    margin: 0 16px 4px;
+    background: rgba(255, 255, 255, 0.10);
+    flex-shrink: 0;
+  }
+
+  // ---------- 折叠时底部 Logo ----------
+  .logo-collapsed {
+    margin-top: auto;
+    padding: 12px 0;
+    text-align: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .logo-icon-small {
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  // ---------- 导航菜单 ----------
+  :deep(.nav-menu) {
     border-right: none;
     background: transparent;
-    height: 100%;
-
-    &:not(.el-menu--collapse) { width: 200px; }
+    width: 220px;
+    flex: 1;
 
     .el-menu-item,
     .el-sub-menu__title {
-      color: var(--sidebar-text) !important;
-      height: 48px;
-      line-height: 48px;
+      color: var(--sidebar-text, #c4b8a8) !important;
+      height: 46px;
+      line-height: 46px;
+      margin: 2px 8px;
+      border-radius: 6px;
+      width: auto !important;
       transition: background 0.2s, color 0.2s;
 
       &:hover {
-        background: var(--sidebar-hover) !important;
-        color: var(--sidebar-text-active) !important;
+        background: var(--sidebar-hover, #4d3a28) !important;
+        color: var(--sidebar-text-active, #f5efe8) !important;
       }
 
       .el-icon { color: inherit; }
@@ -202,28 +255,35 @@ function handleCommand(command: string) {
       font-weight: 500;
     }
 
-    .el-sub-menu__title:hover {
-      background: var(--sidebar-hover) !important;
+    .el-menu--inline .el-menu-item {
+      background: rgba(0, 0, 0, 0.15);
+      margin: 1px 8px;
+      padding-left: 40px !important;
+    }
+  }
+
+  &.collapsed {
+    :deep(.nav-menu) { width: 64px; }
+
+    .logo-area {
+      justify-content: center;
+      padding: 0;
+      height: 56px;
     }
 
-    .el-menu--inline .el-menu-item {
-      background: rgba(0, 0, 0, 0.12);
-      padding-left: 56px !important;
-      height: 42px;
-      line-height: 42px;
-    }
+    .logo-text { display: none; }
   }
 }
 
 // ---- 内容区 ----
-.app-main {
+.main {
   flex: 1;
   padding: 24px;
   overflow-y: auto;
   min-width: 0;
 }
 
-.page-container {
+.page {
   max-width: 1200px;
   margin: 0 auto;
 }

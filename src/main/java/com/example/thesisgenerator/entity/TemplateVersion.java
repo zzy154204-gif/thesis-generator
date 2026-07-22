@@ -22,13 +22,13 @@ public class TemplateVersion {
     @Column(name = "is_current", nullable = false)
     private Boolean isCurrent = true;
 
-    @Column(name = "cover_fields", columnDefinition = "jsonb")
+    @Column(name = "cover_fields", columnDefinition = "TEXT")
     private String coverFields = "[]";
 
-    @Column(name = "chapter_structure", columnDefinition = "jsonb")
+    @Column(name = "chapter_structure", columnDefinition = "TEXT")
     private String chapterStructure = "[]";
 
-    @Column(name = "format_config", columnDefinition = "jsonb")
+    @Column(name = "format_config", columnDefinition = "TEXT")
     private String formatConfig = "{}";
 
     @Column(name = "created_at")

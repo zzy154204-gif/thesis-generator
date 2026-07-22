@@ -1,47 +1,41 @@
 <template>
   <DefaultLayout>
-    <div class="college-manage">
-      <div class="page-header">
-        <h3>学院管理</h3>
-        <el-button type="primary" @click="openDialog()">
-          <el-icon><Plus /></el-icon> 新增学院
-        </el-button>
+    <div class="page">
+      <div class="header">
+        <h2>学院管理</h2>
+        <el-button type="primary" :icon="Plus" @click="showDialog()">新增学院</el-button>
       </div>
 
-      <el-table :data="tableData" border v-loading="loading" style="width: 100%">
-        <el-table-column prop="id" label="ID" width="80" align="center" />
+      <el-table :data="list" v-loading="loading" stripe>
+        <el-table-column prop="id" label="ID" width="60" />
+        <el-table-column prop="code" label="代码" width="120" />
         <el-table-column prop="name" label="学院名称" min-width="200" />
-        <el-table-column prop="code" label="学院代码" width="150" align="center" />
-        <el-table-column prop="createdAt" label="创建时间" width="180" align="center">
-          <template #default="{ row }">
-            {{ row.createdAt ? new Date(row.createdAt).toLocaleString('zh-CN') : '-' }}
-          </template>
+        <el-table-column prop="createdAt" label="创建时间" width="160">
+          <template #default="{ row }">{{ row.createdAt?.split('T')[0] }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right" align="center">
+        <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link @click="openDialog(row)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button text type="primary" size="small" @click="showDialog(row)">编辑</el-button>
+            <el-button text type="danger" size="small" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <el-dialog
-        v-model="dialogVisible"
-        :title="isEdit ? '编辑学院' : '新增学院'"
-        width="500px"
-        destroy-on-close
-      >
-        <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
+      <el-empty v-if="!loading && !list.length" description="暂无学院" :image-size="120" />
+
+      <!-- 编辑对话框 -->
+      <el-dialog v-model="visible" :title="editing ? '编辑学院' : '新增学院'" width="450px">
+        <el-form :model="form" label-width="80px" :rules="rules" ref="formRef">
           <el-form-item label="学院名称" prop="name">
-            <el-input v-model="form.name" placeholder="请输入学院名称" />
+            <el-input v-model="form.name" placeholder="如 计算机科学与技术学院" />
           </el-form-item>
           <el-form-item label="学院代码" prop="code">
-            <el-input v-model="form.code" placeholder="请输入学院代码" />
+            <el-input v-model="form.code" placeholder="如 CS" />
           </el-form-item>
         </el-form>
         <template #footer>
-          <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="submitLoading" @click="handleSubmit">确定</el-button>
+          <el-button @click="visible = false">取消</el-button>
+          <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
         </template>
       </el-dialog>
     </div>
@@ -50,98 +44,81 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { getColleges, createCollege, updateCollege, deleteCollege } from '@/api/college'
+import type { College } from '@/types'
 
 const loading = ref(false)
-const submitLoading = ref(false)
-const tableData = ref<any[]>([])
-const dialogVisible = ref(false)
-const isEdit = ref(false)
-const formRef = ref<FormInstance>()
-const form = reactive({ id: 0, name: '', code: '' })
-
-const rules: FormRules = {
+const list = ref<College[]>([])
+const visible = ref(false)
+const editing = ref(false)
+const saving = ref(false)
+const formRef = ref()
+const form = reactive({ name: '', code: '' })
+const rules = {
   name: [{ required: true, message: '请输入学院名称', trigger: 'blur' }],
   code: [{ required: true, message: '请输入学院代码', trigger: 'blur' }],
 }
 
-async function fetchData() {
+async function fetch() {
   loading.value = true
   try {
     const res = await getColleges()
-    tableData.value = res.data || []
-  } catch {
-    // 请求失败时静默处理
-  } finally {
-    loading.value = false
-  }
+    list.value = res.data || []
+  } catch { /* handled */ }
+  finally { loading.value = false }
 }
 
-function openDialog(row?: any) {
-  isEdit.value = !!row
-  if (row) {
-    form.id = row.id
-    form.name = row.name
-    form.code = row.code
+function showDialog(col?: College) {
+  if (col) {
+    editing.value = true
+    form.name = col.name
+    form.code = col.code
   } else {
-    form.id = 0
+    editing.value = false
     form.name = ''
     form.code = ''
   }
-  dialogVisible.value = true
+  visible.value = true
 }
 
-async function handleSubmit() {
+async function handleSave() {
   if (!formRef.value) return
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return
-    submitLoading.value = true
+  await formRef.value.validate(async (ok: boolean) => {
+    if (!ok) return
+    saving.value = true
     try {
-      if (isEdit.value) {
-        await updateCollege(form.id, { name: form.name, code: form.code })
-        ElMessage.success('修改成功')
+      if (editing.value) {
+        const item = list.value.find(c => c.code === form.code || c.name === form.name)
+        if (item) await updateCollege(item.id, { name: form.name, code: form.code })
+        ElMessage.success('已更新')
       } else {
         await createCollege({ name: form.name, code: form.code })
-        ElMessage.success('新增成功')
+        ElMessage.success('已添加')
       }
-      dialogVisible.value = false
-      fetchData()
-    } catch {
-      // 错误已在拦截器中处理
-    } finally {
-      submitLoading.value = false
-    }
+      visible.value = false
+      await fetch()
+    } catch { /* handled */ }
+    finally { saving.value = false }
   })
 }
 
-async function handleDelete(row: any) {
+async function handleDelete(col: College) {
   try {
-    await ElMessageBox.confirm(`确定要删除【${row.name}】吗？`, '警告', {
-      confirmButtonText: '确定删除',
-      type: 'warning',
-    })
-    await deleteCollege(row.id)
-    ElMessage.success('删除成功')
-    fetchData()
-  } catch {
-    // 用户取消
-  }
+    await ElMessageBox.confirm(`确定删除"${col.name}"？`, '确认', { type: 'warning' })
+    await deleteCollege(col.id)
+    ElMessage.success('已删除')
+    await fetch()
+  } catch { /* 取消 */ }
 }
 
-onMounted(fetchData)
+onMounted(fetch)
 </script>
 
 <style scoped lang="scss">
-.college-manage {
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    h3 { margin: 0; }
-  }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;
+  h2 { font-size: 22px; font-weight: 700; margin: 0; }
 }
 </style>

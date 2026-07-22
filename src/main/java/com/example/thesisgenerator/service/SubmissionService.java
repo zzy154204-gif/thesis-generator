@@ -55,6 +55,27 @@ public class SubmissionService {
     }
 
     /**
+     * 撤回提交：将论文状态从 SUBMITTED 回退至 DRAFT
+     */
+    @Transactional
+    public Thesis withdrawSubmission(Long thesisId, Long studentId) {
+        Thesis thesis = thesisRepository.findById(thesisId)
+                .orElseThrow(() -> new BusinessException(404, "论文不存在"));
+
+        if (!thesis.getStudentId().equals(studentId)) {
+            throw new BusinessException(403, "只能撤回自己的论文");
+        }
+
+        if (!"SUBMITTED".equals(thesis.getStatus())) {
+            throw new BusinessException(400, "当前论文状态不允许撤回，状态: " + thesis.getStatus());
+        }
+
+        thesis.setStatus("DRAFT");
+        thesis.setIsLocked(false);
+        return thesisRepository.save(thesis);
+    }
+
+    /**
      * 查询某论文的全部提交历史（按时间倒序）
      */
     public List<Submission> getSubmissionHistory(Long thesisId) {

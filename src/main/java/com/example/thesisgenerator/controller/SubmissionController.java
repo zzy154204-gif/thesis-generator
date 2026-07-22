@@ -3,6 +3,7 @@ package com.example.thesisgenerator.controller;
 import com.example.thesisgenerator.common.Result;
 import com.example.thesisgenerator.config.RoleRequired;
 import com.example.thesisgenerator.entity.Submission;
+import com.example.thesisgenerator.entity.Thesis;
 import com.example.thesisgenerator.service.SubmissionService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,19 @@ public class SubmissionController {
         Long studentId = (Long) request.getAttribute("userId");
         Submission submission = submissionService.submitThesis(thesisId, studentId);
         return Result.ok(submission);
+    }
+
+    /**
+     * 学生撤回提交
+     * POST /api/v1/submissions/{thesisId}/withdraw
+     */
+    @PostMapping("/{thesisId}/withdraw")
+    @RoleRequired("STUDENT")
+    public Result<Thesis> withdrawSubmission(@PathVariable Long thesisId,
+                                              HttpServletRequest request) {
+        Long studentId = (Long) request.getAttribute("userId");
+        Thesis thesis = submissionService.withdrawSubmission(thesisId, studentId);
+        return Result.ok(thesis);
     }
 
     /**

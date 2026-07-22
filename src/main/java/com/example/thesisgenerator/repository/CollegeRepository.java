@@ -7,4 +7,5 @@ import java.util.List;
 public interface CollegeRepository extends JpaRepository<College, Long> {
     List<College> findByNameContaining(String name);
     boolean existsByCode(String code);
+    java.util.Optional<College> findByCode(String code);
 }

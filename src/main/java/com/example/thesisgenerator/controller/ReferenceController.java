@@ -13,7 +13,7 @@ import java.util.Map;
  * 参考文献 REST 控制器
  */
 @RestController
-@RequestMapping("/api/references")
+@RequestMapping("/api/v1/references")
 @RequiredArgsConstructor
 public class ReferenceController {
 

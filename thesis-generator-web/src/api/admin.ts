@@ -1,48 +1,37 @@
-// src/api/admin.ts
 import request from './request'
+import type { ApiResult, Template, TemplateDetail } from '@/types'
 
-/** 保存模板完整配置（含封面、样式、结构） */
-export function saveTemplate(data: {
-  id?: number
-  name: string
-  collegeId: number | string
-  type: 'GRADUATION' | 'COURSE' | 'PROJECT'
-  description?: string
-  coverConfig: Array<{ key: string; label: string; required: boolean }>
-  styles: { font: string; fontSize: string; lineHeight: string }
-  structure: {
-    hasDeclaration: boolean
-    hasAbstract: boolean
-    hasEnglishAbstract: boolean
-    maxHeadingLevel: number
-    hasAppendix: boolean
-    hasReferences: boolean
-  }
-}) {
-  if (data.id) {
-    return request.put(`/admin/templates/${data.id}`, data)
-  }
-  return request.post('/admin/templates', data)
+export interface AdminTemplateQuery {
+  type?: string
+  collegeId?: number
+  status?: string
+  keyword?: string
 }
 
-/** 获取模板详情（含完整配置） */
-export function getTemplateDetail(id: number) {
-  return request.get(`/admin/templates/${id}`)
+export function getAdminTemplates(params?: AdminTemplateQuery) {
+  return request.get<unknown, ApiResult<Template[]>>('/admin/templates', { params })
 }
 
-/** 预览模板 */
-export function previewTemplate(id: number) {
-  return request.get(`/admin/templates/${id}/preview`)
+export function getAdminTemplate(id: number) {
+  return request.get<unknown, ApiResult<TemplateDetail>>(`/admin/templates/${id}`)
 }
 
-// ============ 系统管理（扩展） ============
-
-/** 获取系统统计信息 */
-export function getSystemStats() {
-  return request.get('/admin/stats')
+export function createAdminTemplate(data: Record<string, any>) {
+  return request.post<unknown, ApiResult<Template>>('/admin/templates', data)
 }
 
-/** 获取所有用户列表（管理员专用） */
-export function getUserList(params: { page: number; size: number; role?: string; keyword?: string }) {
-  return request.get('/admin/users', { params })
+export function updateAdminTemplate(id: number, data: Record<string, any>) {
+  return request.put<unknown, ApiResult<TemplateDetail>>(`/admin/templates/${id}`, data)
+}
+
+export function toggleTemplateStatus(id: number, status: string) {
+  return request.patch<unknown, ApiResult<Template>>(`/admin/templates/${id}/status`, { status })
+}
+
+export function deleteAdminTemplate(id: number) {
+  return request.delete<unknown, ApiResult<null>>(`/admin/templates/${id}`)
+}
+
+export function duplicateTemplate(id: number) {
+  return request.post<unknown, ApiResult<Template>>(`/admin/templates/${id}/duplicate`)
 }

@@ -5,7 +5,7 @@ export const useEditorStore = defineStore('editor', () => {
   const currentSectionId = ref<number | null>(null)
   const isDirty = ref(false)
   const saveStatus = ref<'saved' | 'saving' | 'unsaved'>('saved')
-  const lastSaveTime = ref<string>('')
+  const lastSaveTime = ref('')
 
   function setCurrentSection(id: number) {
     currentSectionId.value = id
@@ -19,7 +19,9 @@ export const useEditorStore = defineStore('editor', () => {
   function markSaved() {
     isDirty.value = false
     saveStatus.value = 'saved'
-    lastSaveTime.value = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    lastSaveTime.value = new Date().toLocaleTimeString('zh-CN', {
+      hour: '2-digit', minute: '2-digit',
+    })
   }
 
   function markSaving() {
@@ -33,5 +35,8 @@ export const useEditorStore = defineStore('editor', () => {
     lastSaveTime.value = ''
   }
 
-  return { currentSectionId, isDirty, saveStatus, lastSaveTime, setCurrentSection, markDirty, markSaved, markSaving, reset }
+  return {
+    currentSectionId, isDirty, saveStatus, lastSaveTime,
+    setCurrentSection, markDirty, markSaved, markSaving, reset,
+  }
 })

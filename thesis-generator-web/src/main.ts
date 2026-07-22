@@ -8,14 +8,10 @@ import router from './router'
 import './assets/styles/global.scss'
 
 const app = createApp(App)
-
-// 注册所有 Element Plus 图标
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component)
+for (const [k, v] of Object.entries(ElementPlusIconsVue)) {
+  app.component(k, v)
 }
-
 app.use(createPinia())
 app.use(router)
-app.use(ElementPlus, { locale: /* 中文待引入 */ undefined })
-
+app.use(ElementPlus)
 app.mount('#app')

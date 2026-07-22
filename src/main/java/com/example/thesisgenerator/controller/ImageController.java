@@ -19,7 +19,7 @@ import java.util.Map;
  * 图片上传与访问 REST 控制器
  */
 @RestController
-@RequestMapping("/api/images")
+@RequestMapping("/api/v1/images")
 @RequiredArgsConstructor
 public class ImageController {
 
@@ -40,7 +40,7 @@ public class ImageController {
                 "originalName", image.getOriginalName(),
                 "fileSize", image.getFileSize(),
                 "contentType", image.getContentType(),
-                "url", "/api/images/" + image.getId() + "/file"
+                "url", "/api/v1/images/" + image.getId() + "/file"
         ));
     }
 
@@ -59,7 +59,7 @@ public class ImageController {
                     result.put("fileSize", image.getFileSize());
                     result.put("contentType", image.getContentType());
                     result.put("createdAt", image.getCreatedAt() != null ? image.getCreatedAt().toString() : null);
-                    result.put("url", "/api/images/" + image.getId() + "/file");
+                    result.put("url", "/api/v1/images/" + image.getId() + "/file");
                     return Result.ok(result);
                 })
                 .orElse(Result.error(404, "图片不存在"));

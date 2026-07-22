@@ -22,16 +22,16 @@ public class ThesisSectionService {
     /**
      * 获取论文章节列表（按 sortOrder 排序）
      */
-    public List<ThesisSection> getSections(Long thesisId, Long userId) {
-        verifyOwner(thesisId, userId);
+    public List<ThesisSection> getSections(Long thesisId, Long userId, String role) {
+        verifyReadAccess(thesisId, userId, role);
         return sectionRepository.findByThesisIdOrderBySortOrder(thesisId);
     }
 
     /**
      * 获取单个章节
      */
-    public ThesisSection getSection(Long thesisId, Long sectionId, Long userId) {
-        verifyOwner(thesisId, userId);
+    public ThesisSection getSection(Long thesisId, Long sectionId, Long userId, String role) {
+        verifyReadAccess(thesisId, userId, role);
         return sectionRepository.findById(sectionId)
                 .orElseThrow(() -> new BusinessException(404, "章节不存在"));
     }
@@ -131,11 +131,21 @@ public class ThesisSectionService {
     // ===== 内部方法 =====
 
     private void verifyOwner(Long thesisId, Long userId) {
-        Optional<Thesis> thesis = thesisRepository.findById(thesisId);
-        if (thesis.isEmpty()) {
-            throw new BusinessException(404, "论文不存在");
+        Thesis thesis = thesisRepository.findById(thesisId)
+                .orElseThrow(() -> new BusinessException(404, "论文不存在"));
+        if (!thesis.getStudentId().equals(userId)) {
+            throw new BusinessException(403, "无权操作该论文");
         }
-        if (!thesis.get().getStudentId().equals(userId)) {
+    }
+
+    /** 教师和管理员可读所有论文，学生只能读自己的 */
+    private void verifyReadAccess(Long thesisId, Long userId, String role) {
+        Thesis thesis = thesisRepository.findById(thesisId)
+                .orElseThrow(() -> new BusinessException(404, "论文不存在"));
+        if ("TEACHER".equals(role) || "ADMIN".equals(role)) {
+            return;
+        }
+        if (!thesis.getStudentId().equals(userId)) {
             throw new BusinessException(403, "无权操作该论文");
         }
     }

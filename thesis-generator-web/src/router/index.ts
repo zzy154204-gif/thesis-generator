@@ -4,21 +4,21 @@ import { getToken } from '@/utils/token'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    // ===== 公开页面 =====
+    // ---- 公开 ----
     {
       path: '/login',
       name: 'Login',
       component: () => import('@/views/auth/Login.vue'),
-      meta: { requiresAuth: false },
+      meta: { guest: true },
     },
     {
       path: '/register',
       name: 'Register',
       component: () => import('@/views/auth/Register.vue'),
-      meta: { requiresAuth: false },
+      meta: { guest: true },
     },
 
-    // ===== 学生页面 =====
+    // ---- 学生 ----
     {
       path: '/papers',
       name: 'PaperList',
@@ -29,6 +29,12 @@ const router = createRouter({
       path: '/papers/create',
       name: 'PaperCreate',
       component: () => import('@/views/paper/PaperCreate.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/papers/import',
+      name: 'PaperImport',
+      component: () => import('@/views/paper/PaperImport.vue'),
       meta: { requiresAuth: true },
     },
     {
@@ -56,7 +62,7 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
 
-    // ===== 管理员页面 =====
+    // ---- 管理员 ----
     {
       path: '/admin/colleges',
       name: 'CollegeManage',
@@ -82,7 +88,7 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['ADMIN'] },
     },
 
-    // ===== 教师页面 =====
+    // ---- 教师 ----
     {
       path: '/teacher/review',
       name: 'PendingList',
@@ -96,7 +102,7 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['TEACHER'] },
     },
 
-    // ===== 公共页面 =====
+    // ---- 公共 ----
     {
       path: '/profile',
       name: 'Profile',
@@ -110,20 +116,46 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
 
-    // ===== 重定向 =====
-    { path: '/', redirect: '/papers' },
-    { path: '/:pathMatch(.*)*', redirect: '/papers' },
+    { path: '/', redirect: () => roleHome() },
+    { path: '/:pathMatch(.*)*', redirect: () => roleHome() },
   ],
 })
 
-// 路由鉴权守卫
-router.beforeEach((to, from, next) => {
+/** 根据角色返回默认首页 */
+function roleHome() {
+  const role = localStorage.getItem('thesis_role')
+  if (role === 'TEACHER') return '/teacher/review'
+  if (role === 'ADMIN') return '/admin/templates'
+  return '/papers'
+}
+
+router.beforeEach((to, _from, next) => {
   const token = getToken()
 
   if (to.meta.requiresAuth && !token) {
     next({ path: '/login', query: { redirect: to.fullPath } })
-  } else if (token && (to.path === '/login' || to.path === '/register')) {
-    next({ path: '/papers' })
+  } else if (token && to.meta.guest) {
+    next(roleHome())
+  } else if (to.meta.roles) {
+    // 检查角色权限（从 localStorage 或解析 token）
+    let role = localStorage.getItem('thesis_role')
+    if (!role) {
+      try {
+        const token = getToken()
+        if (token) {
+          const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+          while (base64.length % 4) base64 += '='
+          const payload = JSON.parse(decodeURIComponent(escape(atob(base64))))
+          role = payload.role || ''
+          if (role) localStorage.setItem('thesis_role', role)
+        }
+      } catch { /* fall through */ }
+    }
+    if (!role || !(to.meta.roles as string[]).includes(role)) {
+      next(roleHome())
+    } else {
+      next()
+    }
   } else {
     next()
   }

@@ -17,7 +17,7 @@ public class TemplateController {
 
     private final TemplateService templateService;
 
-    // ===== 模板 CRUD =====
+    // ===== 模板 CRUD（学生端：仅已启用的模板）=====
     @GetMapping
     public Result<List<Template>> list(
             @RequestParam(required = false) String type,
@@ -25,31 +25,29 @@ public class TemplateController {
         return Result.ok(templateService.findAll(type, collegeId));
     }
 
+    /** 获取当前可用的模板列表（仅已启用） */
+    @GetMapping("/available")
+    public Result<List<Template>> available(
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) Long collegeId) {
+        return Result.ok(templateService.findAvailable(type, collegeId));
+    }
+
     @GetMapping("/{id}")
     public Result<Template> get(@PathVariable Long id) {
         return Result.ok(templateService.findById(id));
-    }
-
-    @PostMapping
-    public Result<Template> create(@RequestBody Template template) {
-        return Result.ok(templateService.create(template));
-    }
-
-    @PutMapping("/{id}")
-    public Result<Template> update(@PathVariable Long id, @RequestBody Template template) {
-        return Result.ok(templateService.update(id, template));
-    }
-
-    @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable Long id) {
-        templateService.delete(id);
-        return Result.ok();
     }
 
     // ===== 版本管理 =====
     @GetMapping("/{id}/versions")
     public Result<List<TemplateVersion>> versions(@PathVariable Long id) {
         return Result.ok(templateService.getVersions(id));
+    }
+
+    /** 根据版本 ID 获取版本详情（含 formatConfig） */
+    @GetMapping("/versions/{versionId}")
+    public Result<TemplateVersion> getVersion(@PathVariable Long versionId) {
+        return Result.ok(templateService.getVersionById(versionId));
     }
 
     @PostMapping("/{id}/versions")

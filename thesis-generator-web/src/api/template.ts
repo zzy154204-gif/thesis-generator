@@ -1,118 +1,25 @@
-// src/api/template.ts
 import request from './request'
-import type { ApiResult, Template, TemplateVersion } from '@/types/api'
+import type { ApiResult, Template, TemplateVersion } from '@/types'
 
-// ============================================================
-// 学生端接口（只读）
-// ============================================================
-
-/** 获取模板列表（学生端：仅返回已启用的模板） */
-export function getTemplates(params?: {
-  type?: 'GRADUATION' | 'COURSE' | 'PROJECT'
-  collegeId?: number
-}): Promise<ApiResult<Template[]>> {
-  return request.get('/templates', { params })
+/** 学生端：获取已启用的模板 */
+export function getAvailableTemplates(params?: { type?: string; collegeId?: number }) {
+  return request.get<unknown, ApiResult<Template[]>>('/templates/available', { params })
 }
 
-/** 获取模板详情（学生端） */
-export function getTemplate(id: number): Promise<ApiResult<Template>> {
-  return request.get(`/templates/${id}`)
+/** 学生端：获取模板列表 */
+export function getTemplates(params?: { type?: string; collegeId?: number }) {
+  return request.get<unknown, ApiResult<Template[]>>('/templates', { params })
 }
 
-/** 获取模板版本列表 */
-export function getTemplateVersions(templateId: number): Promise<ApiResult<TemplateVersion[]>> {
-  return request.get(`/templates/${templateId}/versions`)
+export function getTemplate(id: number) {
+  return request.get<unknown, ApiResult<Template>>(`/templates/${id}`)
 }
 
-/** 获取可用模板列表（学生创建论文时可选） */
-export function getAvailableTemplates(params?: {
-  type?: 'GRADUATION' | 'COURSE' | 'PROJECT'
-  collegeId?: number
-}): Promise<ApiResult<Template[]>> {
-  return request.get('/templates/available', { params })
+export function getTemplateVersions(id: number) {
+  return request.get<unknown, ApiResult<TemplateVersion[]>>(`/templates/${id}/versions`)
 }
 
-// ============================================================
-// 管理员端接口（读写）
-// ============================================================
-
-/** 获取模板列表（管理员端：含所有状态） */
-export function getAdminTemplates(params?: {
-  type?: 'GRADUATION' | 'COURSE' | 'PROJECT'
-  collegeId?: number
-  status?: 'ENABLED' | 'DISABLED'
-  keyword?: string
-}): Promise<ApiResult<Template[]>> {
-  return request.get('/admin/templates', { params })
-}
-
-/** 获取模板详情（管理员端：含完整配置） */
-export function getAdminTemplate(id: number): Promise<ApiResult<Template>> {
-  return request.get(`/admin/templates/${id}`)
-}
-
-/** 创建模板 */
-export function createTemplate(data: {
-  name: string
-  type: 'GRADUATION' | 'COURSE' | 'PROJECT'
-  collegeId: number
-  description?: string
-  coverConfig?: Array<{ key: string; label: string; required: boolean }>
-  styles?: { font: string; fontSize: string; lineHeight: string }
-  structure?: {
-    hasDeclaration: boolean
-    hasAbstract: boolean
-    hasEnglishAbstract: boolean
-    maxHeadingLevel: number
-    hasAppendix: boolean
-    hasReferences: boolean
-  }
-}): Promise<ApiResult<Template>> {
-  return request.post('/admin/templates', data)
-}
-
-/** 更新模板 */
-export function updateTemplate(
-  id: number,
-  data: {
-    name?: string
-    type?: 'GRADUATION' | 'COURSE' | 'PROJECT'
-    collegeId?: number
-    description?: string
-    coverConfig?: Array<{ key: string; label: string; required: boolean }>
-    styles?: { font: string; fontSize: string; lineHeight: string }
-    structure?: {
-      hasDeclaration: boolean
-      hasAbstract: boolean
-      hasEnglishAbstract: boolean
-      maxHeadingLevel: number
-      hasAppendix: boolean
-      hasReferences: boolean
-    }
-  }
-): Promise<ApiResult<Template>> {
-  return request.put(`/admin/templates/${id}`, data)
-}
-
-/** 切换模板启用/停用 */
-export function toggleTemplateStatus(
-  id: number,
-  status: 'ENABLED' | 'DISABLED'
-): Promise<ApiResult<Template>> {
-  return request.patch(`/admin/templates/${id}/status`, { status })
-}
-
-/** 删除模板 */
-export function deleteTemplate(id: number): Promise<ApiResult<void>> {
-  return request.delete(`/admin/templates/${id}`)
-}
-
-/** 预览模板（返回 HTML 预览内容） */
-export function previewTemplate(id: number): Promise<ApiResult<{ html: string }>> {
-  return request.get(`/admin/templates/${id}/preview`)
-}
-
-/** 复制模板 */
-export function duplicateTemplate(id: number): Promise<ApiResult<Template>> {
-  return request.post(`/admin/templates/${id}/duplicate`)
+/** 根据版本 ID 获取版本详情（含 formatConfig） */
+export function getTemplateVersion(id: number) {
+  return request.get<unknown, ApiResult<TemplateVersion>>(`/templates/versions/${id}`)
 }
