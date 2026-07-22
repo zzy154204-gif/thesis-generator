@@ -357,7 +357,7 @@ public class DocxExportService {
 
     /** 渲染 <table>（兜底输出文本） */
     private void renderTable(XWPFDocument doc, Element el) {
-        String text = el.text().strip();2
+        String text = el.text().strip();
         if (!text.isEmpty()) {
             XWPFParagraph p = doc.createParagraph();
             p.setIndentationFirstLine(480);
