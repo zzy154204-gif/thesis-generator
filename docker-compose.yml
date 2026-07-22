@@ -53,9 +53,9 @@ services:
       APP_UPLOAD_DIR: /app/uploads/images
       LIBREOFFICE_PATH: /usr/bin/libreoffice
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
-    # 宿主 8080 → 容器 8080
+    # 宿主 8082 → 容器 8080（服务器上 8080 已被考勤系统占用）
     ports:
-      - "8080:8080"
+      - "8082:8080"
     volumes:
       - uploads:/app/uploads
 
