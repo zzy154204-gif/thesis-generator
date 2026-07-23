@@ -29,8 +29,10 @@ public class JwtFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI();
 
-        // 放行登录、注册、Swagger、图片文件访问（浏览器 <img> 标签不带 Authorization）
+        // 放行登录、注册、学院列表、教师列表、Swagger、图片文件访问
         if (path.equals("/api/v1/auth/login") || path.equals("/api/v1/auth/register") ||
+                path.equals("/api/v1/colleges") ||
+                path.equals("/api/v1/teacher/reviews/teachers") ||
                 path.contains("/doc.html") ||
                 path.contains("/v3/api-docs") || path.contains("/swagger") ||
                 path.contains("/webjars") ||

@@ -194,7 +194,7 @@ public class PdfExportService {
         if (src.startsWith("http://") || src.startsWith("https://")) {
             try {
                 // 使用 java.net.URLConnection 下载（避免依赖 RestTemplate）
-                java.net.URL url = new java.net.URL(src);
+                java.net.URL url = URI.create(src).toURL();
                 java.net.URLConnection conn = url.openConnection();
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(10000);

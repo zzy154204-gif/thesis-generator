@@ -9,11 +9,13 @@ const request = axios.create({
 })
 
 // ---- 公开接口白名单（不要求登录，401/403 不弹过期提示）----
+// 注意：config.url 是 Axios 实例接收的相对路径（不含 baseURL），
+// 而 baseURL 默认为 /api/v1，所以这里写相对路径即可。
 const PUBLIC_URL_PREFIXES = [
-  '/api/v1/auth/login',
-  '/api/v1/auth/register',
-  '/api/v1/colleges',
-  '/api/v1/teacher/reviews/teachers',
+  '/auth/login',
+  '/auth/register',
+  '/colleges',
+  '/teacher/reviews/teachers',
 ]
 
 function isPublicUrl(url: string | undefined): boolean {

@@ -1,5 +1,5 @@
 import Image from '@tiptap/extension-image'
-import type { NodeView as NodeViewType } from '@tiptap/pm/view'
+import type { NodeView as NodeViewType, ViewMutationRecord } from '@tiptap/pm/view'
 import type { Editor } from '@tiptap/core'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
@@ -297,11 +297,13 @@ class ResizableImageNodeView implements NodeViewType {
     return false
   }
 
-  ignoreMutation(mutation: MutationRecord | { type: 'selection'; target: Element }): boolean {
+  ignoreMutation(mutation: ViewMutationRecord | { type: 'selection'; target: Node }): boolean {
     // 允许 img 属性的 DOM 变更（宽度等）
     if (mutation.type === 'attributes' && (mutation.target as HTMLElement).tagName === 'IMG') {
       return true
     }
+    // selection 变更不拦截
+    if (mutation.type === 'selection') return true
     return false
   }
 

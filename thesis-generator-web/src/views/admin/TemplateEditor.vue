@@ -399,6 +399,8 @@ const isNew = !templateId
 const saving = ref(false)
 const colleges = ref<College[]>([])
 
+const styleTab = ref('body')
+
 const form = reactive({
   name: '',
   type: 'GRADUATION',
@@ -443,13 +445,13 @@ async function loadTemplate() {
     form.coverConfig = data.coverConfig || []
     form.structure = data.structure || []
     // 深度合并 styles，保留默认值
-    const loaded = data.styles || {}
+    const loaded = data.styles || {} as any
     for (const key of Object.keys(form.styles)) {
-      if (typeof loaded[key] === 'object' && loaded[key] !== null) {
-        form.styles[key] = { ...form.styles[key], ...loaded[key] }
-      } else if (loaded[key] !== undefined) {
-        // 兼容旧格式：扁平字段直接赋值
-        form.styles[key] = loaded[key]
+      const k = key as keyof typeof form.styles
+      if (typeof loaded[k] === 'object' && loaded[k] !== null) {
+        form.styles[k] = { ...form.styles[k], ...loaded[k] }
+      } else if (loaded[k] !== undefined) {
+        form.styles[k] = loaded[k]
       }
     }
     form.versionId = data.versionId
