@@ -143,7 +143,7 @@ router.beforeEach((to, _from, next) => {
       try {
         const token = getToken()
         if (token) {
-          const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+          let base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
           while (base64.length % 4) base64 += '='
           const payload = JSON.parse(decodeURIComponent(escape(atob(base64))))
           role = payload.role || ''
