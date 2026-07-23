@@ -24,3 +24,8 @@ export function updateSectionsOrder(thesisId: number, sectionIds: number[]) {
 export function deleteSection(thesisId: number, sectionId: number) {
   return request.delete<unknown, ApiResult<null>>(`/papers/${thesisId}/sections/${sectionId}`)
 }
+
+/** 重建参考文献章节内容（读取已关联的引用数据，按 GB/T 7714 格式化写入参考文献章节） */
+export function rebuildReferences(thesisId: number) {
+  return request.post<unknown, ApiResult<ThesisSection>>(`/papers/${thesisId}/sections/rebuild-references`)
+}

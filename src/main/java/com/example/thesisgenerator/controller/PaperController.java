@@ -59,7 +59,9 @@ public class PaperController {
                 ? Long.valueOf(body.get("collegeId").toString()) : null;
         Long templateVersionId = body.get("templateVersionId") != null
                 ? Long.valueOf(body.get("templateVersionId").toString()) : null;
-        return Result.ok(paperService.createPaper(studentId, title, collegeId, templateVersionId));
+        Long teacherId = body.get("teacherId") != null
+                ? Long.valueOf(body.get("teacherId").toString()) : null;
+        return Result.ok(paperService.createPaper(studentId, title, collegeId, templateVersionId, teacherId));
     }
 
     @GetMapping("/{id}")
@@ -118,9 +120,10 @@ public class PaperController {
     public Result<Thesis> importDocx(HttpServletRequest request,
                                      @RequestParam("file") MultipartFile file,
                                      @RequestParam("title") String title,
-                                     @RequestParam(value = "templateVersionId", required = false) Long templateVersionId) {
+                                     @RequestParam(value = "templateVersionId", required = false) Long templateVersionId,
+                                     @RequestParam(value = "teacherId", required = false) Long teacherId) {
         Long userId = (Long) request.getAttribute("userId");
-        Thesis thesis = docxImportService.importDocx(file, title, userId, templateVersionId);
+        Thesis thesis = docxImportService.importDocx(file, title, userId, templateVersionId, teacherId);
         return Result.ok(thesis);
     }
 
@@ -145,6 +148,13 @@ public class PaperController {
                        @RequestParam(defaultValue = "DOCX") String format) throws IOException {
         Long studentId = (Long) request.getAttribute("userId");
         Thesis thesis = paperService.getPaper(id, studentId);
+
+        // 导出前重建参考文献章节内容（确保文末列表与引用数据一致）
+        try {
+            sectionService.rebuildReferenceSection(thesis.getId());
+        } catch (Exception e) {
+            log.warn("导出前重建参考文献章节失败: {}", e.getMessage());
+        }
 
         // 获取章节内容（含 HTML）
         List<ThesisSection> sections = sectionService.getSections(thesis.getId(), studentId, "ADMIN");

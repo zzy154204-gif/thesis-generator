@@ -17,6 +17,7 @@ export interface RegisterRequest {
   realName: string
   role: 'STUDENT' | 'TEACHER' | 'ADMIN'
   collegeId?: number
+  teacherNo?: string // 教师工号（教师必填）
 }
 
 export interface LoginResponse {
@@ -33,6 +34,7 @@ export interface UserInfo {
   realName: string
   role: 'STUDENT' | 'TEACHER' | 'ADMIN'
   collegeId?: number
+  teacherNo?: string
 }
 
 /* ========== 学院 ========== */
@@ -112,10 +114,13 @@ export interface Thesis {
   id: number
   studentId: number
   templateVersionId?: number
+  templateName?: string
   title: string
   status: PaperStatus
   isLocked: boolean
+  teacherId?: number
   collegeId?: number
+  importMetadata?: string // JSON: Word 导入时提取的封面元数据（学号、姓名、学院等）
   createdAt: string
   updatedAt: string
 }
@@ -246,6 +251,32 @@ export interface Submission {
   studentId: number
   versionNumber: number
   submittedAt: string
+}
+
+/** 学生提交记录列表项（含论文信息） */
+export interface SubmissionRecordItem {
+  id: number
+  thesisId: number
+  versionNumber: number
+  submittedAt: string
+  thesisTitle: string
+  thesisStatus: string
+}
+
+/** 教师批阅记录列表项 */
+export interface ReviewRecordItem {
+  id: number
+  thesisId: number
+  action: 'REVIEWED' | 'RETURNED'
+  score?: number
+  grade?: string
+  commentHtml?: string
+  returnReason?: string
+  createdAt: string
+  thesisTitle: string
+  thesisStatus: string
+  studentName: string
+  studentUsername: string
 }
 
 /* ========== 图片 ========== */

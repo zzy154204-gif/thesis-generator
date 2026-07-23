@@ -46,6 +46,7 @@
         <div v-for="p in list" :key="p.id" class="card" @click="router.push(`/editor/${p.id}`)">
           <div class="card-body">
             <h3 class="card-title">{{ p.title }}</h3>
+            <div class="card-template" v-if="p.templateName">模板：{{ p.templateName }}</div>
             <div class="card-meta">
               <el-tag :type="statusTagType(p.status)" size="small">{{ statusLabel(p.status) }}</el-tag>
               <span class="time">{{ relativeTime(p.updatedAt) }}</span>
@@ -64,6 +65,12 @@
         <el-table :data="list" @row-click="(r: any) => router.push(`/editor/${r.id}`)">
           <el-table-column prop="title" label="论文标题" min-width="280">
             <template #default="{ row }"><span class="link">{{ row.title }}</span></template>
+          </el-table-column>
+          <el-table-column label="论文模板" width="150">
+            <template #default="{ row }">
+              <el-tag v-if="row.templateName" size="small" effect="plain">{{ row.templateName }}</el-tag>
+              <span v-else style="color:var(--el-text-color-secondary);font-size:13px">-</span>
+            </template>
           </el-table-column>
           <el-table-column prop="status" label="状态" width="110">
             <template #default="{ row }"><el-tag :type="statusTagType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag></template>
@@ -163,7 +170,8 @@ onMounted(fetch)
     box-shadow: 0 6px 20px rgba(62,46,31,0.10); transform: translateY(-2px);
     border-color: var(--el-color-primary-light-5);
   }
-  .card-title { font-size: 16px; font-weight: 600; color: var(--el-text-color-primary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 12px; line-height: 1.4; }
+  .card-title { font-size: 16px; font-weight: 600; color: var(--el-text-color-primary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px; line-height: 1.4; }
+  .card-template { font-size: 12px; color: var(--el-color-primary); margin-bottom: 10px; }
   .card-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
   .time { font-size: 12px; color: var(--el-text-color-secondary); }
   .card-actions { display: flex; gap: 4px; border-top: 1px solid var(--el-border-color-extra-light); padding-top: 12px; }

@@ -48,17 +48,48 @@ public class DocxImportService {
     /** 最大标题长度（超过此长度不作为标题） */
     private static final int MAX_HEADING_LENGTH = 50;
 
-    /** 中文数字章节标题模式：第一章、第一节、第一章 概述 */
+    /** 封面关键词（段落匹配时视为封面/元数据，不生成章节） */
+    private static final Set<String> COVER_KEYWORDS = Set.of(
+            "学号", "姓名", "课程名称", "课程", "学院", "学期",
+            "论文题目", "指导老师", "指导教师", "指导导师",
+            "专业", "年级", "班级", "学校", "大学", "院系",
+            "提交日期", "完成日期", "日期", "成绩"
+    );
+
+    /** 封面元数据提取正则（学号:xxx  姓名:xxx  学院:xxx 等） */
+    private static final Pattern METADATA_KEY_VALUE = Pattern.compile(
+            "^(学号|姓名|学院|专业|班级|年级|课程名称|课程|指导老师|指导教师|指导导师|论文题目|学校|院系)"
+                    + "[:：]\\s*(.+)$"
+    );
+
+    /** 最大封面检测段落数（仅前 N 段可能属于封面） */
+    private static final int COVER_SCAN_MAX = 20;
+
+    /** 中文数字章节标题模式：第一章、第一节、第一章 概述（支持阿拉伯数字 第1章） */
     private static final Pattern CN_CHAPTER = Pattern.compile(
-            "^第[一二三四五六七八九十百零〇]+[章节篇]\\s*.*"
+            "^第[0-9一二三四五六七八九十百零〇]+[章节篇部分]\\s*.*"
     );
-    /** 中文数字子标题模式：一、 二、 （一）（二） */
+    /**
+     * 中文数字顿号章节模式：一、二、三、十、 （顶级章节）
+     * 匹配示例：一、李白道教思想的形成渊源  二、研究背景
+     */
+    private static final Pattern CN_NUM_CHAPTER = Pattern.compile(
+            "^[一二三四五六七八九十]+[、\\.]\\s*.*"
+    );
+    /**
+     * 阿拉伯数字章节模式：1. 2. 3、 （顶级章节）
+     * 注意：要求点号后紧跟空白或中文，避免与 1.1 多级编号冲突
+     */
+    private static final Pattern ARABIC_CHAPTER = Pattern.compile(
+            "^[0-9]+[\\.\\、](\\s+[\\u4e00-\\u9fa5]|\\s*$).*"
+    );
+    /** 中文数字子标题模式：（一）（二）（三）—仅保留括号形式 */
     private static final Pattern CN_SECTION = Pattern.compile(
-            "^[（(]?[一二三四五六七八九十百零〇]+[）).、]\\s*.*"
+            "^[（(][一二三四五六七八九十百零〇]+[）)]\\s*.*"
     );
-    /** 数字编号标题模式：1.1  1.1.1  1、 2、 */
+    /** 数字编号子标题模式：1.1  1.1.1 */
     private static final Pattern NUM_HEADING = Pattern.compile(
-            "^\\d+(\\.\\d+)*[\\s.、].*"
+            "^\\d+(\\.\\d+)+[\\s.、]?.*"
     );
 
     /** 学术参考文献标识 [M] [J] [D] [C] [N] [R] [S] [P] [Z] [EB/OL] 等 */
@@ -80,7 +111,7 @@ public class DocxImportService {
      * 导入 .docx 文件（无模板）
      */
     public Thesis importDocx(MultipartFile file, String title, Long userId) {
-        return importDocx(file, title, userId, null);
+        return importDocx(file, title, userId, null, null);
     }
 
     /**
@@ -90,9 +121,10 @@ public class DocxImportService {
      * @param title             论文标题
      * @param userId            学生用户 ID
      * @param templateVersionId 模板版本 ID（可选，为 null 时走传统标题检测）
+     * @param teacherId         指导老师 ID（可选）
      * @return 已创建的 Thesis 实体
      */
-    public Thesis importDocx(MultipartFile file, String title, Long userId, Long templateVersionId) {
+    public Thesis importDocx(MultipartFile file, String title, Long userId, Long templateVersionId, Long teacherId) {
         validateFile(file);
 
         // 创建论文
@@ -102,11 +134,23 @@ public class DocxImportService {
         thesis.setStatus("DRAFT");
         thesis.setIsLocked(false);
         thesis.setTemplateVersionId(templateVersionId);
+        thesis.setTeacherId(teacherId);
         thesis = thesisRepository.save(thesis);
         final Long thesisId = thesis.getId();
 
         // 解析文档
         try (InputStream is = file.getInputStream(); XWPFDocument doc = new XWPFDocument(is)) {
+            // 提取封面元数据（学号、姓名、学院等）
+            Map<String, String> coverMeta = extractMetadata(doc.getParagraphs());
+            if (!coverMeta.isEmpty()) {
+                try {
+                    thesis.setImportMetadata(MAPPER.writeValueAsString(coverMeta));
+                    thesis = thesisRepository.save(thesis);
+                } catch (Exception e) {
+                    log.warn("保存导入元数据失败", e);
+                }
+            }
+
             List<SectionBlock> parsed = parseDocument(doc);
 
             if (templateVersionId != null) {
@@ -341,52 +385,162 @@ public class DocxImportService {
     // ==================== 文档解析 ====================
 
     /**
-     * 解析文档，识别标题并切分为章节块
+     * 解析文档，识别章节标题并切分为章节块
+     * <p>
+     * 规则：
+     * - 封面段落（含学号/姓名等关键词）被跳过，不生成章节
+     * - 以下模式会创建新的顶级章节：
+     *   1) Word Heading 1 样式
+     *   2) "第N章/节/篇/部分"（第一章 绪论）
+     *   3) "一、二、三、" 中文数字顿号模式
+     *   4) "1. 2. 3、" 阿拉伯数字模式
+     * - 子标题（（一）（二）、1.1、加粗短文本）渲染为 inline {@code <h2>/<h3>}，不新开章节
+     * - 参考文献条目被跳过
      */
     private List<SectionBlock> parseDocument(XWPFDocument doc) {
-        List<SectionBlock> sections = new ArrayList<>();
         List<XWPFParagraph> paragraphs = doc.getParagraphs();
 
+        // Phase 1: 识别正文起始位置（跳过封面段落）
+        int bodyStart = findBodyStartIndex(paragraphs);
+
+        List<SectionBlock> sections = new ArrayList<>();
         SectionBlock current = null;
         StringBuilder currentBody = new StringBuilder();
 
-        for (XWPFParagraph para : paragraphs) {
-            // 跳过脚注/尾注段落
-            if (isFootnoteOrEndnote(para)) continue;
+        for (int i = bodyStart; i < paragraphs.size(); i++) {
+            XWPFParagraph para = paragraphs.get(i);
 
-            // 跳过图片/空段落
-            if (para.getRuns() == null || para.getRuns().isEmpty()) {
-                String text = para.getText().trim();
-                if (text.isEmpty()) continue;
-            }
+            // 跳过脚注/尾注
+            if (isFootnoteOrEndnote(para)) continue;
 
             String text = para.getText().trim();
             if (text.isEmpty()) continue;
 
-            // 判断是否为标题（同时检查长度和参考文献特征）
-            HeadingInfo heading = detectHeading(doc, para, text);
-            if (heading != null) {
+            // 跳过参考文献条目
+            if (isReferenceParagraph(text)) continue;
+
+            // 1) 检测是否为顶级章节标题（"第N章" / Heading 1）
+            ChapterHeadingInfo ch = detectChapterHeading(doc, para, text);
+            if (ch != null) {
+                // 保存前一章节
                 if (current != null) {
-                    current.bodyHtml = wrapBodyHtml(currentBody.toString());
+                    current.bodyHtml = currentBody.toString();
                     sections.add(current);
                 }
                 current = new SectionBlock();
                 current.heading = text;
-                current.level = heading.level;
+                current.level = ch.level;
                 currentBody = new StringBuilder();
-            } else {
-                if (currentBody.length() > 0) currentBody.append("\n");
-                currentBody.append(escapeToHtml(text));
+                continue;
             }
+
+            // 2) 检测是否为子标题（一、 二、 加粗等 → 渲染为 <h2>/<h3>）
+            SubHeadingInfo sub = detectSubHeading(doc, para, text);
+            if (sub != null) {
+                if (current == null) {
+                    // 第一个章节尚未创建，说明正文前有无标题引言段，创建一个隐式章节
+                    current = new SectionBlock();
+                    current.heading = "前言";
+                    current.level = 1;
+                    currentBody = new StringBuilder();
+                }
+                currentBody.append("<h").append(sub.level).append(">")
+                        .append(escapeToHtml(text))
+                        .append("</h").append(sub.level).append(">\n");
+                continue;
+            }
+
+            // 3) 普通正文段落
+            if (current == null) {
+                // 第一个章节尚未创建，说明正文前有无标题引言段
+                current = new SectionBlock();
+                current.heading = "前言";
+                current.level = 1;
+                currentBody = new StringBuilder();
+            }
+            currentBody.append("<p>").append(escapeToHtml(text)).append("</p>\n");
         }
 
         // 保存最后一章
         if (current != null) {
-            current.bodyHtml = wrapBodyHtml(currentBody.toString());
+            current.bodyHtml = currentBody.toString();
             sections.add(current);
         }
 
         return sections;
+    }
+
+    /**
+     * 找到正文起始索引（跳过封面段落）
+     * <p>
+     * 封面段落特征：包含封面关键词 或 极短且非标题的行。
+     * 一旦遇到明确的章节标题（如 "第N章"、"一、"、"1."），停止跳过。
+     */
+    private int findBodyStartIndex(List<XWPFParagraph> paragraphs) {
+        int scanEnd = Math.min(paragraphs.size(), COVER_SCAN_MAX);
+        for (int i = 0; i < scanEnd; i++) {
+            String text = paragraphs.get(i).getText().trim();
+            if (text.isEmpty()) continue;
+
+            // 遇到章节标题 → 正文从这里开始
+            if (isAnyChapterHeading(text)) {
+                return i;
+            }
+            // 如果没有封面关键词特征 → 认为正文已开始
+            if (!isCoverParagraph(text)) {
+                return i;
+            }
+        }
+        // 前 N 段全是封面特征 → 从第 N 段开始
+        return scanEnd < paragraphs.size() ? scanEnd : 0;
+    }
+
+    /**
+     * 判断文本是否匹配任意一种章节标题格式
+     */
+    private boolean isAnyChapterHeading(String text) {
+        return CN_CHAPTER.matcher(text).matches()
+                || CN_NUM_CHAPTER.matcher(text).matches()
+                || ARABIC_CHAPTER.matcher(text).matches();
+    }
+
+    /**
+     * 判断段落是否为封面元数据
+     */
+    private boolean isCoverParagraph(String text) {
+        if (text == null || text.isBlank()) return false;
+        // 匹配封面关键词
+        long matchCount = COVER_KEYWORDS.stream()
+                .filter(text::contains)
+                .count();
+        if (matchCount >= 1) return true;
+        // 极短行（封面常见格式：空行、分割线、标题装饰）
+        if (text.length() <= 5) return true;
+        return false;
+    }
+
+    /**
+     * 从封面段落中提取元数据（学号、姓名、学院等）
+     *
+     * @return key-value 映射，如 {"学号": "2021001", "姓名": "张三", "学院": "文学院"}
+     */
+    private Map<String, String> extractMetadata(List<XWPFParagraph> paragraphs) {
+        Map<String, String> metadata = new LinkedHashMap<>();
+        int scanEnd = Math.min(paragraphs.size(), COVER_SCAN_MAX);
+        for (int i = 0; i < scanEnd; i++) {
+            String text = paragraphs.get(i).getText().trim();
+            if (text.isEmpty()) continue;
+            java.util.regex.Matcher m = METADATA_KEY_VALUE.matcher(text);
+            if (m.matches()) {
+                String key = m.group(1);
+                String value = m.group(2).trim();
+                // 避免空值覆盖已有值
+                if (!value.isEmpty() && !metadata.containsKey(key)) {
+                    metadata.put(key, value);
+                }
+            }
+        }
+        return metadata;
     }
 
     /**
@@ -413,6 +567,11 @@ public class DocxImportService {
     private boolean isReferenceParagraph(String text) {
         if (text == null || text.isBlank()) return false;
 
+        // 如果文本匹配章节标题模式且长度较短 → 视为标题，不作为参考文献
+        if (text.length() <= MAX_HEADING_LENGTH && isAnyChapterHeading(text)) {
+            return false;
+        }
+
         // 特征 1: 包含参考文献类型标识 [M] [J] [D] [C] [N] [R] [S] [P] [Z] [EB/OL]
         if (REFERENCE_TYPE_TAG.matcher(text).find()) {
             return true;
@@ -436,67 +595,124 @@ public class DocxImportService {
         return false;
     }
 
-    // ==================== 标题检测 ====================
+    // ==================== 标题检测（拆分为章节标题 + 子标题）====================
 
     /**
-     * 检测段落是否为标题（含长度限制和参考文献过滤）
+     * 检测是否为顶级章节标题（只有此类标题会创建新章节）
+     * <p>
+     * 认定条件（任一满足即可）：
+     * 1. Word 内置 Heading 1 样式
+     * 2. "第N章" / "第N节" / "第N篇" / "第N部分" 中文标题模式
+     * 3. "一、二、三、" 中文数字顿号模式
+     * 4. "1. 2. 3、" 阿拉伯数字模式
      */
-    private HeadingInfo detectHeading(XWPFDocument doc, XWPFParagraph para, String text) {
-        // 1) 超过最大长度 → 不是标题
+    private ChapterHeadingInfo detectChapterHeading(XWPFDocument doc, XWPFParagraph para, String text) {
+        // 超过最大长度 → 不是标题
         if (text.length() > MAX_HEADING_LENGTH) return null;
 
-        // 2) 参考文献特征 → 不是标题
-        if (isReferenceParagraph(text)) return null;
-
-        // 策略 1: Word 内置标题样式
-        HeadingInfo fromStyle = detectHeadingByStyle(doc, para);
+        // 条件 1: Word Heading 1 样式
+        ChapterHeadingInfo fromStyle = detectHeading1ByStyle(doc, para);
         if (fromStyle != null) return fromStyle;
 
-        // 策略 2: 加粗大号字体（启发式）
-        HeadingInfo fromFormat = detectHeadingByFormat(para);
-        if (fromFormat != null) return fromFormat;
-
-        // 策略 3: 中文标题正则
-        if (CN_CHAPTER.matcher(text).matches()) {
-            int level = text.matches("^第.*[章].*") ? 1 : 2;
-            return new HeadingInfo(level);
-        }
-        if (CN_SECTION.matcher(text).matches()) {
-            return new HeadingInfo(2);
+        // 条件 2: 中文 "第N章/节/篇/部分" 模式（如 "第一章 绪论"）
+        if (isChapterPattern(text)) {
+            return new ChapterHeadingInfo(1);
         }
 
-        // 策略 4: 数字编号
-        if (NUM_HEADING.matcher(text).matches()) {
-            String numPart = text.replaceAll("[\\s.、].*", "");
-            int dotCount = numPart.split("\\.").length - 1;
-            return new HeadingInfo(Math.min(dotCount + 1, 3));
+        // 条件 3: "一、XXX" / "二、XXX" 中文数字顿号模式
+        if (CN_NUM_CHAPTER.matcher(text).matches()) {
+            return new ChapterHeadingInfo(1);
+        }
+
+        // 条件 4: "1. XXX" / "2、XXX" 阿拉伯数字模式
+        if (ARABIC_CHAPTER.matcher(text).matches()) {
+            return new ChapterHeadingInfo(1);
         }
 
         return null;
     }
 
     /**
-     * 通过 Word 内置样式识别标题
+     * 检测是否为子标题（在章节内部渲染为 {@code <h2>} / {@code <h3>}，不新开章节）
+     * <p>
+     * 认定条件（任一满足即可）：
+     * 1. Word 内置 Heading 2 / Heading 3 样式
+     * 2. 中文子标题模式：（一）（二）（三）—仅括号形式
+     * 3. 数字编号多级模式：1.1、1.1.1、2.1（单级如 "1." 在顶级章节中处理）
+     * 4. 加粗短文本（≤50 字）— 常见于论文子标题
      */
-    private HeadingInfo detectHeadingByStyle(XWPFDocument doc, XWPFParagraph para) {
+    private SubHeadingInfo detectSubHeading(XWPFDocument doc, XWPFParagraph para, String text) {
+        // 超过最大长度 → 不是标题（子标题通常更短）
+        if (text.length() > MAX_HEADING_LENGTH) return null;
+
+        // 条件 1: Word Heading 2 / 3 样式
+        SubHeadingInfo fromStyle = detectHeading2Or3ByStyle(doc, para);
+        if (fromStyle != null) return fromStyle;
+
+        // 条件 2: 中文子标题模式
+        if (CN_SECTION.matcher(text).matches()) {
+            return new SubHeadingInfo(2);
+        }
+
+        // 条件 3: 数字编号模式（如 1.1 / 1.1.1 / 1、）
+        if (NUM_HEADING.matcher(text).matches()) {
+            int dots = text.replaceAll("[^.]", "").length();
+            return new SubHeadingInfo(Math.min(dots + 1, 3));
+        }
+
+        // 条件 4: 加粗短文本（格式启发式）
+        SubHeadingInfo fromFormat = detectSubHeadingByFormat(para, text);
+        if (fromFormat != null) return fromFormat;
+
+        return null;
+    }
+
+    /** 判断文本是否匹配 "第N章/节/篇/部分" 模式（支持阿拉伯数字如"第1章"） */
+    private boolean isChapterPattern(String text) {
+        return CN_CHAPTER.matcher(text).matches();
+    }
+
+    /**
+     * 检测 Word Heading 1 样式
+     */
+    private ChapterHeadingInfo detectHeading1ByStyle(XWPFDocument doc, XWPFParagraph para) {
+        Integer level = getHeadingLevel(doc, para);
+        if (level != null && level == 1) {
+            return new ChapterHeadingInfo(1);
+        }
+        return null;
+    }
+
+    /**
+     * 检测 Word Heading 2 / 3 样式
+     */
+    private SubHeadingInfo detectHeading2Or3ByStyle(XWPFDocument doc, XWPFParagraph para) {
+        Integer level = getHeadingLevel(doc, para);
+        if (level != null && (level == 2 || level == 3)) {
+            return new SubHeadingInfo(level);
+        }
+        return null;
+    }
+
+    /**
+     * 获取段落的内置标题级别（1-3），非标题段落返回 null
+     */
+    private Integer getHeadingLevel(XWPFDocument doc, XWPFParagraph para) {
         try {
             String styleId = para.getStyle();
             if (styleId == null || styleId.isEmpty()) return null;
 
             XWPFStyle style = doc.getStyles().getStyle(styleId);
-            if (style == null) return null;
+            if (style == null || style.getName() == null) return null;
 
-            String styleName = style.getName();
-            if (styleName == null) return null;
-
-            String lower = styleName.toLowerCase().trim();
+            String lower = style.getName().toLowerCase().trim();
             if (lower.startsWith("heading")) {
                 String numPart = lower.replaceAll("heading\\s*", "").trim();
                 try {
                     int level = Integer.parseInt(numPart);
-                    return new HeadingInfo(Math.min(level, 3));
+                    return Math.min(level, 3);
                 } catch (NumberFormatException e) {
-                    return new HeadingInfo(1);
+                    return 1;
                 }
             }
         } catch (Exception e) {
@@ -506,9 +722,12 @@ public class DocxImportService {
     }
 
     /**
-     * 通过段落格式启发式识别标题（加粗、大字号）
+     * 通过段落格式启发式识别子标题（加粗 + 短文本 → 判定为子标题）
+     * <p>
+     * 注意：不再将加粗短文本作为顶级章节（旧版中这是封面标签被误认为章节的主因）
      */
-    private HeadingInfo detectHeadingByFormat(XWPFParagraph para) {
+    private SubHeadingInfo detectSubHeadingByFormat(XWPFParagraph para, String text) {
+        if (text.length() > MAX_HEADING_LENGTH) return null;
         if (para.getRuns() == null || para.getRuns().isEmpty()) return null;
 
         boolean isBold = para.getRuns().stream().anyMatch(r -> {
@@ -516,21 +735,8 @@ public class DocxImportService {
         });
         if (!isBold) return null;
 
-        boolean hasLargeFont = para.getRuns().stream().anyMatch(r -> {
-            try {
-                int fontSize = r.getFontSize();
-                return fontSize != -1 && fontSize >= 14;
-            } catch (Exception e) { return false; }
-        });
-
-        if (isBold && hasLargeFont) {
-            return new HeadingInfo(1);
-        }
-        // 仅加粗作为二级标题（短文本）
-        if (isBold && para.getText().trim().length() <= 60) {
-            return new HeadingInfo(2);
-        }
-        return null;
+        // 加粗文本作为子标题（h3）
+        return new SubHeadingInfo(3);
     }
 
     // ==================== 章节创建 ====================
@@ -595,10 +801,16 @@ public class DocxImportService {
         String bodyHtml;
     }
 
-    /** 标题检测结果 */
-    private static class HeadingInfo {
+    /** 顶级章节标题检测结果（第N章 / Heading 1） */
+    private static class ChapterHeadingInfo {
         final int level;
-        HeadingInfo(int level) { this.level = level; }
+        ChapterHeadingInfo(int level) { this.level = level; }
+    }
+
+    /** 子标题检测结果（一、 二、 1.1、加粗文本等 → 渲染为 h2/h3） */
+    private static class SubHeadingInfo {
+        final int level;
+        SubHeadingInfo(int level) { this.level = level; }
     }
 
     /** 模板章节定义（对应 JSON 结构） */

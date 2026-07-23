@@ -32,14 +32,31 @@
       </div>
 
       <!-- 选择模板确认对话框 -->
-      <el-dialog v-model="dialogVisible" title="使用模板" width="400px">
-        <p>确定使用模板 <strong>{{ selected?.name }}</strong> 创建论文吗？</p>
-        <p style="font-size:13px;color:var(--el-text-color-secondary);margin-top:8px">
+      <el-dialog v-model="dialogVisible" title="使用模板创建论文" width="450px">
+        <p>使用模板 <strong>{{ selected?.name }}</strong> 创建论文</p>
+        <p style="font-size:13px;color:var(--el-text-color-secondary);margin-top:6px">
           系统将按模板结构自动生成章节框架
         </p>
+        <el-form :model="createForm" class="dialog-form" label-width="0">
+          <el-form-item label="" required>
+            <el-select
+              v-model="createForm.teacherId"
+              placeholder="请选择指导老师（必选）"
+              filterable
+              style="width:100%"
+            >
+              <el-option
+                v-for="t in teachers"
+                :key="t.id"
+                :label="`${t.realName} (${t.college || '学院未知'} - 工号: ${t.teacherNo || '无'})`"
+                :value="t.id"
+              />
+            </el-select>
+          </el-form-item>
+        </el-form>
         <template #footer>
           <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="creating" @click="confirmUse">确定创建</el-button>
+          <el-button type="primary" :disabled="!createForm.teacherId" :loading="creating" @click="confirmUse">确定创建</el-button>
         </template>
       </el-dialog>
     </div>
@@ -53,6 +70,7 @@ import { ElMessage } from 'element-plus'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { getAvailableTemplates } from '@/api/template'
 import { getColleges } from '@/api/college'
+import { getTeachers } from '@/api/review'
 import { createPaper } from '@/api/paper'
 import { getTemplateVersions } from '@/api/template'
 import type { Template, College } from '@/types'
@@ -61,11 +79,13 @@ const router = useRouter()
 const loading = ref(true)
 const templates = ref<any[]>([])
 const colleges = ref<College[]>([])
+const teachers = ref<{ id: number; realName: string; teacherNo?: string; college?: string }[]>([])
 const typeFilter = ref('')
 const collegeFilter = ref<number | undefined>()
 const dialogVisible = ref(false)
 const selected = ref<any>(null)
 const creating = ref(false)
+const createForm = ref({ teacherId: undefined as number | undefined })
 
 function typeLabel(type: string) {
   return type === 'GRADUATION' ? '毕业论文' : type === 'COURSE' ? '课程论文' : '项目报告'
@@ -107,23 +127,29 @@ function useTemplate(t: any) {
 }
 
 async function confirmUse() {
-  if (!selected.value) return
+  if (!selected.value || !createForm.value.teacherId) return
   creating.value = true
   try {
     const res = await createPaper({
       title: selected.value.name + '论文',
       templateVersionId: selected.value.versionId,
+      teacherId: createForm.value.teacherId,
     })
     ElMessage.success('已创建并应用模板')
     dialogVisible.value = false
+    createForm.value.teacherId = undefined
     router.push(`/editor/${res.data.id}`)
   } catch { /* handled */ }
   finally { creating.value = false }
 }
 
 onMounted(async () => {
-  const colRes = await getColleges()
+  const [colRes, teacherRes] = await Promise.all([
+    getColleges(),
+    getTeachers(),
+  ])
   colleges.value = colRes.data || []
+  teachers.value = teacherRes.data || []
   await fetch()
 })
 </script>

@@ -127,6 +127,12 @@
           <el-tooltip content="重做" placement="bottom">
             <el-button size="small" @click="editor.chain().focus().redo().run()"><el-icon><RefreshRight /></el-icon></el-button>
           </el-tooltip>
+          <div class="sep" />
+          <el-tooltip :content="footnoteCleanEnabled ? '脚注清理已开启' : '脚注清理已关闭'" placement="bottom">
+            <el-button size="small" :class="{ active: footnoteCleanEnabled }" @click="toggleFootnoteClean">
+              <span style="font-size:12px">¶</span>
+            </el-button>
+          </el-tooltip>
           <!-- 隐藏的文件上传 input -->
           <input ref="fileInputRef" type="file" accept="image/*" style="display:none" @change="onFileSelected" />
         </div>
@@ -148,6 +154,17 @@
           <div class="info-row"><label>状态</label><el-tag :type="statusTagType(paper.status)" size="small">{{ statusLabel(paper.status) }}</el-tag></div>
           <div class="info-row"><label>创建</label><span>{{ relativeTime(paper.createdAt) }}</span></div>
           <div class="info-row"><label>更新</label><span>{{ relativeTime(paper.updatedAt) }}</span></div>
+
+          <!-- Word 导入封面元数据 -->
+          <template v-if="parsedMetadata.length">
+            <el-divider />
+            <div class="meta-section">
+              <h4 class="meta-title">导入封面信息</h4>
+              <div v-for="m in parsedMetadata" :key="m.key" class="info-row">
+                <label>{{ m.key }}</label><span>{{ m.value }}</span>
+              </div>
+            </div>
+          </template>
         </div>
         <el-divider />
 
@@ -270,7 +287,7 @@ import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { usePaperStore } from '@/stores/paper'
 import { useEditorStore } from '@/stores/editor'
 import { statusLabel, statusTagType, relativeTime } from '@/utils/format'
-import { getSection, createSection, updateSection, deleteSection, updateSectionsOrder } from '@/api/section'
+import { getSection, createSection, updateSection, deleteSection, updateSectionsOrder, rebuildReferences } from '@/api/section'
 import { downloadExport, getReviewFeedback } from '@/api/paper'
 import { submitThesis, withdrawSubmission } from '@/api/submission'
 import { saveDraft, getDraft } from '@/api/draft'
@@ -279,6 +296,7 @@ import { getTemplateVersion } from '@/api/template'
 import { getReferences } from '@/api/reference'
 import { getThesisReferences, addThesisReference, removeThesisReference } from '@/api/reference'
 import type { ThesisSection } from '@/types'
+import { cleanFootnotesFromHtml, cleanFootnotesFromText } from '@/utils/cleanFootnotes'
 
 // Tiptap
 import { useEditor, EditorContent } from '@tiptap/vue-3'
@@ -305,6 +323,17 @@ const pageLoading = ref(true)
 const paper = computed(() => store.currentPaper)
 const paperId = Number(route.params.paperId)
 
+/** 解析 Word 导入封面元数据（学号、姓名、学院等） */
+const parsedMetadata = computed(() => {
+  if (!paper.value?.importMetadata) return []
+  try {
+    const obj = JSON.parse(paper.value.importMetadata)
+    return Object.entries(obj).map(([key, value]) => ({ key, value }))
+  } catch {
+    return []
+  }
+})
+
 /** 当前高亮章节 key（防止 editorStore.currentSectionId 在章节未加载时指向旧值） */
 const currentNodeKey = computed(() => {
   if (!store.sections.length) return undefined
@@ -319,6 +348,12 @@ const adding = ref(false)
 const addParent = ref<ThesisSection | null>(null)
 const addForm = ref({ title: '' })
 const fileInputRef = ref<HTMLInputElement>()
+
+// ---- 脚注清理开关 ----
+const footnoteCleanEnabled = ref(true)
+const toggleFootnoteClean = () => {
+  footnoteCleanEnabled.value = !footnoteCleanEnabled.value
+}
 
 // ---- 参考文献引用 ----
 const thesisRefs = ref<any[]>([])
@@ -364,6 +399,8 @@ async function handleAddRef(referenceId: number) {
     // 从待选列表移除
     allReferences.value = allReferences.value.filter((r: any) => r.id !== referenceId)
     await loadThesisReferences()
+    // 同步更新参考文献章节内容
+    await syncReferenceSection()
   } catch { /* handled */ }
 }
 
@@ -372,7 +409,25 @@ async function handleRemoveRef(refId: number) {
   try {
     await removeThesisReference(paperId, refId)
     await loadThesisReferences()
+    // 同步更新参考文献章节内容
+    await syncReferenceSection()
   } catch { /* handled */ }
+}
+
+/** 同步参考文献章节内容（调用后端重建接口 + 刷新本地章节数据） */
+async function syncReferenceSection() {
+  try {
+    await rebuildReferences(paperId)
+    // 刷新章节数据以获取更新后的参考文献章节 content
+    await store.fetchSections(paperId)
+    // 如果当前正在查看参考文献章节，刷新编辑器内容
+    if (currentSection.value?.title?.includes('参考文献')) {
+      const refSection = store.sections.find(s => s.title.includes('参考文献'))
+      if (refSection && editor.value) {
+        editor.value.commands.setContent(refSection.content || '')
+      }
+    }
+  } catch { /* ignore - 可能没有参考文献章节 */ }
 }
 
 /** 插入引用标记到编辑器 */
@@ -461,6 +516,14 @@ const editor = useEditor({
   ],
   editorProps: {
     attributes: { class: 'prose-editor' },
+    transformPastedHTML: (html: string) => {
+      if (!footnoteCleanEnabled.value) return html
+      return cleanFootnotesFromHtml(html)
+    },
+    transformPastedText: (text: string) => {
+      if (!footnoteCleanEnabled.value) return text
+      return cleanFootnotesFromText(text)
+    },
     handleDrop: (view: any, event: DragEvent) => {
       const file = event.dataTransfer?.files?.[0]
       if (file?.type.startsWith('image/')) {
@@ -642,10 +705,16 @@ function flattenTree(nodes: any[]): string[] {
   return ids
 }
 
-// 新增章节
+// 新增章节（自动插入到参考文献之前）
 function showAddDialog(parent?: any) {
   addParent.value = parent?.section || null
-  addForm.value.title = parent ? `子章节 ${(parent.children?.length || 0) + 1}` : `第 ${store.sections.filter(s => !s.parentId).length + 1} 章`
+  if (parent) {
+    addForm.value.title = `子章节 ${(parent.children?.length || 0) + 1}`
+  } else {
+    // 顶级章节编号不计入 "参考文献"
+    const topSections = store.sections.filter(s => !s.parentId && !s.title.includes('参考文献'))
+    addForm.value.title = `第 ${topSections.length + 1} 章`
+  }
   addVisible.value = true
 }
 
@@ -835,8 +904,10 @@ watch(() => store.sections.length, () => {
   }
   .info-body { padding: 16px; }
   .info-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 13px;
-    label { color: var(--el-text-color-secondary); }
+    label { color: var(--el-text-color-secondary); white-space: nowrap; margin-right: 8px; }
   }
+  .meta-section { padding: 0; }
+  .meta-title { font-size: 12px; font-weight: 600; margin: 0 0 8px; color: var(--el-text-color-secondary); }
   .panel-body { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 8px; }
   .action-btn { width: 100%; }
 

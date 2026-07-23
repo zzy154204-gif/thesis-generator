@@ -28,8 +28,13 @@ public class ReviewRecordService {
         Thesis thesis = thesisRepository.findById(thesisId)
                 .orElseThrow(() -> new BusinessException(404, "论文不存在"));
 
-        // 只有已提交状态才能批阅
-        if (!"SUBMITTED".equals(thesis.getStatus())) {
+        // 权限校验：只能批阅自己指导的论文
+        if (!teacherId.equals(thesis.getTeacherId())) {
+            throw new BusinessException(403, "无权批阅该论文");
+        }
+
+        // 只有已提交状态才能批阅（DRAFT 为暂存，允许任何状态）
+        if (!"DRAFT".equals(action) && !"SUBMITTED".equals(thesis.getStatus())) {
             throw new BusinessException(400, "当前论文状态不允许批阅，状态: " + thesis.getStatus());
         }
 
@@ -74,5 +79,12 @@ public class ReviewRecordService {
      */
     public List<ReviewRecord> getReviewHistory(Long thesisId) {
         return reviewRecordRepository.findByThesisIdOrderByCreatedAtDesc(thesisId);
+    }
+
+    /**
+     * 查询教师的所有正式批阅记录（按时间倒序，排除 DRAFT）
+     */
+    public List<ReviewRecord> getReviewRecordsByTeacher(Long teacherId) {
+        return reviewRecordRepository.findReviewRecordsByTeacherId(teacherId);
     }
 }

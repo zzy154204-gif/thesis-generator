@@ -9,7 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -80,5 +82,45 @@ public class SubmissionService {
      */
     public List<Submission> getSubmissionHistory(Long thesisId) {
         return submissionRepository.findByThesisIdOrderBySubmittedAtDesc(thesisId);
+    }
+
+    /**
+     * 查询学生的所有提交记录（按时间倒序）
+     */
+    public List<Submission> getSubmissionsByStudent(Long studentId) {
+        return submissionRepository.findByStudentIdOrderBySubmittedAtDesc(studentId);
+    }
+
+    /**
+     * 查询学生的提交记录，附带论文信息
+     */
+    public List<Map<String, Object>> getSubmissionRecords(Long studentId) {
+        List<Submission> submissions = getSubmissionsByStudent(studentId);
+        List<Map<String, Object>> result = new ArrayList<>();
+        Map<Long, Thesis> thesisCache = new java.util.HashMap<>();
+
+        for (Submission s : submissions) {
+            Map<String, Object> item = new java.util.LinkedHashMap<>();
+            item.put("id", s.getId());
+            item.put("thesisId", s.getThesisId());
+            item.put("versionNumber", s.getVersionNumber());
+            item.put("submittedAt", s.getSubmittedAt());
+
+            // 缓存论文信息
+            Thesis thesis = thesisCache.get(s.getThesisId());
+            if (thesis == null) {
+                thesis = thesisRepository.findById(s.getThesisId()).orElse(null);
+                if (thesis != null) thesisCache.put(s.getThesisId(), thesis);
+            }
+            if (thesis != null) {
+                item.put("thesisTitle", thesis.getTitle());
+                item.put("thesisStatus", thesis.getStatus());
+            } else {
+                item.put("thesisTitle", "已删除的论文");
+                item.put("thesisStatus", "");
+            }
+            result.add(item);
+        }
+        return result;
     }
 }

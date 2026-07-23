@@ -8,6 +8,48 @@ const request = axios.create({
   timeout: 15000,
 })
 
+// ---- 公开接口白名单（不要求登录，401/403 不弹过期提示）----
+const PUBLIC_URL_PREFIXES = [
+  '/api/v1/auth/login',
+  '/api/v1/auth/register',
+  '/api/v1/colleges',
+  '/api/v1/teacher/reviews/teachers',
+]
+
+function isPublicUrl(url: string | undefined): boolean {
+  if (!url) return false
+  return PUBLIC_URL_PREFIXES.some(prefix => url.startsWith(prefix))
+}
+
+/** 当前是否在登录/注册页面 */
+function isOnAuthPage(): boolean {
+  try {
+    return ['/login', '/register'].includes(router.currentRoute.value.path)
+  } catch {
+    return false
+  }
+}
+
+// ---- 错误提示防抖 ----
+let lastAuthErrorMessage = ''
+let lastAuthErrorTime = 0
+const AUTH_ERROR_DEBOUNCE_MS = 3000
+
+function showAuthError(message: string) {
+  const now = Date.now()
+  if (message === lastAuthErrorMessage && now - lastAuthErrorTime < AUTH_ERROR_DEBOUNCE_MS) {
+    return // 防抖：3 秒内同一错误不重复弹
+  }
+  lastAuthErrorMessage = message
+  lastAuthErrorTime = now
+  ElMessage.error(message)
+}
+
+function clearAuthDebounce() {
+  lastAuthErrorMessage = ''
+  lastAuthErrorTime = 0
+}
+
 request.interceptors.request.use(
   (config) => {
     const token = getToken()
@@ -23,20 +65,38 @@ request.interceptors.response.use(
   (res) => {
     const body = res.data
     if (body.code !== 200) {
-      ElMessage.error(body.message || '请求失败')
+      // 白名单接口的业务错误不抛“登录过期”
+      if (!isPublicUrl(res.config?.url) && !isOnAuthPage()) {
+        ElMessage.error(body.message || '请求失败')
+      }
       return Promise.reject(new Error(body.message))
     }
     return body
   },
   (err) => {
-    if (err.response?.status === 401) {
+    const status = err.response?.status
+    const requestUrl: string | undefined = err.response?.config?.url || err.config?.url
+
+    // ---- 白名单接口 或 已在登录/注册页 → 静默处理 ----
+    if (isPublicUrl(requestUrl) || isOnAuthPage()) {
+      // 仍移除 token 但绝不弹提示、不跳转
+      if (status === 401) {
+        removeToken()
+        clearAuthDebounce()
+      }
+      return Promise.reject(err)
+    }
+
+    if (status === 401) {
       removeToken()
+      clearAuthDebounce()
+      showAuthError('登录已过期，请重新登录')
       router.push('/login')
-      ElMessage.error('登录已过期，请重新登录')
-    } else if (err.response?.status === 403) {
-      ElMessage.error('权限不足')
+    } else if (status === 403) {
+      showAuthError('权限不足')
     } else {
-      ElMessage.error(err.response?.data?.message || '网络请求失败')
+      const msg = err.response?.data?.message || '网络请求失败'
+      showAuthError(msg)
     }
     return Promise.reject(err)
   },

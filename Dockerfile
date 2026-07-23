@@ -19,8 +19,12 @@ RUN ./mvnw package -DskipTests -B
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-# 安装 LibreOffice（用于 DOCX 转 PDF）—— 如不需要可删除此行
-RUN apk add --no-cache libreoffice
+# 安装 LibreOffice（用于 DOCX 转 PDF）+ 中文字体（解决 PDF 中文乱码）
+RUN apk add --no-cache libreoffice font-noto-cjk font-noto-cjk-extra
+
+# 配置字体别名（SimSun/宋体/黑体 → Noto CJK），确保 LibreOffice PDF 渲染正确
+COPY fonts-local.conf /etc/fonts/local.conf
+RUN fc-cache -f
 
 # 从 builder 复制 Spring Boot jar
 COPY --from=builder /build/target/*.jar app.jar

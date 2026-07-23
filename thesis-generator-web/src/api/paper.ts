@@ -20,7 +20,7 @@ export function getReviewFeedback(id: number) {
   return request.get<unknown, ApiResult<{ latestReview: any; annotations: any[] }>>(`/papers/${id}/review-feedback`)
 }
 
-export function createPaper(data: { title: string; collegeId?: number; templateVersionId?: number }) {
+export function createPaper(data: { title: string; collegeId?: number; templateVersionId?: number; teacherId?: number }) {
   return request.post<unknown, ApiResult<Thesis>>('/papers', data)
 }
 
@@ -84,11 +84,12 @@ export async function downloadExport(id: number, format: 'DOCX' | 'PDF' = 'DOCX'
 }
 
 /** 导入 .docx 文件并自动解析章节 */
-export function importDocx(file: File, title: string, templateVersionId?: number) {
+export function importDocx(file: File, title: string, templateVersionId?: number, teacherId?: number) {
   const form = new FormData()
   form.append('file', file)
   form.append('title', title)
   if (templateVersionId) form.append('templateVersionId', String(templateVersionId))
+  if (teacherId) form.append('teacherId', String(teacherId))
   return request.post<unknown, ApiResult<Thesis>>('/papers/import', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000, // 大文件解析可能需要较长时间

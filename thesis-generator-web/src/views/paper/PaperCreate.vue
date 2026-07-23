@@ -18,6 +18,16 @@
             </el-select>
           </el-form-item>
 
+          <el-form-item label="指导老师">
+            <el-select v-model="form.teacherId" placeholder="选择指导老师" clearable filterable style="width:300px">
+              <el-option
+                v-for="t in teachers" :key="t.id"
+                :label="`${t.realName} (${t.college || '学院未知'} - 工号: ${t.teacherNo || '无'})`"
+                :value="t.id"
+              />
+            </el-select>
+          </el-form-item>
+
           <el-form-item label="选择模板" prop="templateVersionId">
             <el-select v-model="form.templateVersionId" placeholder="选择模板（可选）" clearable filterable style="width:400px">
               <el-option v-for="t in templates" :key="t.id" :label="t.name" :value="t.id">
@@ -39,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
@@ -48,6 +58,7 @@ import { useAuthStore } from '@/stores/auth'
 import { getColleges } from '@/api/college'
 import { getAvailableTemplates } from '@/api/template'
 import { getTemplateVersions } from '@/api/template'
+import { getTeachers } from '@/api/review'
 import { createPaper } from '@/api/paper'
 import type { College, Template } from '@/types'
 
@@ -56,14 +67,24 @@ const auth = useAuthStore()
 const submitting = ref(false)
 const formRef = ref()
 
-const form = reactive({ title: '未命名论文', collegeId: undefined as number | undefined, templateVersionId: undefined as number | undefined })
+const form = reactive({ title: '未命名论文', collegeId: undefined as number | undefined, teacherId: undefined as number | undefined, templateVersionId: undefined as number | undefined })
 const rules = { title: [{ required: true, message: '请输入论文标题', trigger: 'blur' }] }
 const colleges = ref<College[]>([])
 const templates = ref<any[]>([])
+const teachers = ref<{ id: number; realName: string; teacherNo?: string; college?: string }[]>([])
 
 function templateDesc(t: Template) {
   return t.type === 'GRADUATION' ? '毕业论文' : t.type === 'COURSE' ? '课程论文' : '项目报告'
 }
+
+/** 监听学院变化，加载该学院的老师列表 */
+watch(() => form.collegeId, async (collegeId) => {
+  teachers.value = []
+  try {
+    const res = await getTeachers(collegeId || undefined)
+    teachers.value = res.data || []
+  } catch { /* ignore */ }
+}, { immediate: true })
 
 onMounted(async () => {
   try {
@@ -91,6 +112,7 @@ async function handleCreate() {
       const res = await createPaper({
         title: form.title,
         collegeId: form.collegeId,
+        teacherId: form.teacherId,
         templateVersionId: form.templateVersionId,
       })
       ElMessage.success('创建成功')

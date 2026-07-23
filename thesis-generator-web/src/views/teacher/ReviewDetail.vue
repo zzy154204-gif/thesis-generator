@@ -14,6 +14,7 @@
         <div class="summary">
           <div><label>标题：</label><strong>{{ detail.paper.title }}</strong></div>
           <div><label>学生：</label>{{ detail.paper.studentName }}（{{ detail.paper.studentId }}）</div>
+          <div v-if="detail.paper.templateName"><label>模板：</label>{{ detail.paper.templateName }}</div>
           <div><label>状态：</label><el-tag :type="statusTagType(detail.paper.status)" size="small">{{ statusLabel(detail.paper.status) }}</el-tag></div>
           <div><label>提交时间：</label>{{ relativeTime(detail.paper.submittedAt) }}</div>
         </div>

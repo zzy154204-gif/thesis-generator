@@ -104,4 +104,22 @@ public class SectionController {
         sectionService.deleteSection(thesisId, sectionId, userId);
         return Result.ok();
     }
+
+    /**
+     * 重建参考文献章节内容
+     * <p>
+     * 读取论文已关联的参考文献数据，按 GB/T 7714 格式生成 HTML 内容，
+     * 写入 "参考文献" 章节。正文中插入 [N] 引用标记后调用此接口即可同步更新文末列表。
+     * <p>
+     * POST /api/v1/papers/{id}/sections/rebuild-references
+     */
+    @PostMapping("/{id}/sections/rebuild-references")
+    public Result<ThesisSection> rebuildReferences(HttpServletRequest request,
+                                                   @PathVariable("id") Long thesisId) {
+        Long userId = (Long) request.getAttribute("userId");
+        String role = (String) request.getAttribute("role");
+        // 验证访问权限
+        sectionService.getSections(thesisId, userId, role);
+        return Result.ok(sectionService.rebuildReferenceSection(thesisId));
+    }
 }

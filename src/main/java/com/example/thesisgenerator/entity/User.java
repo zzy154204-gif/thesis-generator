@@ -28,6 +28,10 @@ public class User {
     @Column(name = "college_id")
     private Long collegeId;
 
+    /** 教师工号（仅教师角色使用） */
+    @Column(name = "teacher_no", length = 50)
+    private String teacherNo;
+
     @Column(nullable = false)
     private Boolean enabled = true;
 

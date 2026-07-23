@@ -19,6 +19,23 @@
           </el-form-item>
 
           <!-- 关联模板（可选） -->
+          <el-form-item label="指导老师">
+            <el-select
+              v-model="form.teacherId"
+              placeholder="选择指导老师"
+              clearable
+              filterable
+              style="width:100%"
+              :disabled="uploading"
+            >
+              <el-option
+                v-for="t in teachers" :key="t.id"
+                :label="`${t.realName} (${t.college || '学院未知'} - 工号: ${t.teacherNo || '无'})`"
+                :value="t.id"
+              />
+            </el-select>
+          </el-form-item>
+
           <el-form-item label="关联模板">
             <el-select
               v-model="form.templateVersionId"
@@ -122,6 +139,7 @@ import { ArrowLeft, Document, UploadFilled, Loading } from '@element-plus/icons-
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { importDocx } from '@/api/paper'
 import { getAvailableTemplates, getTemplateVersions } from '@/api/template'
+import { getTeachers } from '@/api/review'
 
 const router = useRouter()
 
@@ -131,10 +149,20 @@ const uploading = ref(false)
 const uploadSuccess = ref(false)
 const selectedFile = ref<File | null>(null)
 const templates = ref<any[]>([])
+const teachers = ref<{ id: number; realName: string; teacherNo?: string; college?: string }[]>([])
 
 const form = ref({
   title: '未命名论文',
+  teacherId: undefined as number | undefined,
   templateVersionId: undefined as number | undefined,
+})
+
+// 教师列表在 onMounted 中加载
+onMounted(async () => {
+  try {
+    const res = await getTeachers()
+    teachers.value = res.data || []
+  } catch { /* ignore */ }
 })
 
 const canSubmit = computed(() => {
@@ -204,6 +232,7 @@ async function handleImport() {
       selectedFile.value,
       form.value.title.trim(),
       form.value.templateVersionId,
+      form.value.teacherId,
     )
     uploadSuccess.value = true
     ElMessage.success(`论文「${res.data.title}」导入成功，已自动解析章节结构`)

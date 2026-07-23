@@ -24,10 +24,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigInteger;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Set;
@@ -111,7 +113,7 @@ public class DocxExportService {
             titleRun.setText(title);
             titleRun.setBold(true);
             titleRun.setFontSize(22);
-            titleRun.setFontFamily("宋体");
+            setRunFont(titleRun, "宋体", "Noto Serif CJK SC");
 
             // ---- 章节内容 ----
             for (ThesisSection section : sections) {
@@ -124,7 +126,7 @@ public class DocxExportService {
                 headingRun.setText(section.getTitle());
                 headingRun.setBold(true);
                 headingRun.setFontSize(14);
-                headingRun.setFontFamily("宋体");
+                setRunFont(headingRun, "宋体", "Noto Serif CJK SC");
 
                 // 正文（HTML → DOCX，含图片）
                 if (section.getContent() != null && !section.getContent().isBlank()) {
@@ -211,7 +213,6 @@ public class DocxExportService {
         renderInlineContent(p, el);
     }
 
-    /** 渲染标题 */
     private void renderHeading(XWPFDocument doc, Element el, int level, int fontSize) {
         String text = el.text().strip();
         if (text.isEmpty()) return;
@@ -222,7 +223,7 @@ public class DocxExportService {
         XWPFRun run = p.createRun();
         run.setBold(true);
         run.setFontSize(fontSize);
-        run.setFontFamily("黑体");
+        setRunFont(run, "黑体", "Noto Sans CJK SC");
         run.setText(text);
     }
 
@@ -355,16 +356,212 @@ public class DocxExportService {
         return 0;
     }
 
-    /** 渲染 <table>（兜底输出文本） */
+    // ==================== 表格渲染 ====================
+
+    /** 渲染 <table> — 使用 XWPFTable 创建真正的 Word 表格 */
     private void renderTable(XWPFDocument doc, Element el) {
-        String text = el.text().strip();2
-        if (!text.isEmpty()) {
-            XWPFParagraph p = doc.createParagraph();
-            p.setIndentationFirstLine(480);
-            XWPFRun run = p.createRun();
-            run.setText("【表格】" + text);
-            run.setFontSize(12);
-            run.setFontFamily("宋体");
+        // 1) 提取所有行（直接子 tr，或 thead/tbody/tfoot 包裹的 tr）
+        List<Element> rows = new ArrayList<>();
+        for (Element child : el.children()) {
+            String tag = child.tagName().toLowerCase();
+            if ("tr".equals(tag)) {
+                rows.add(child);
+            } else if (Set.of("thead", "tbody", "tfoot").contains(tag)) {
+                for (Element trChild : child.children()) {
+                    if ("tr".equals(trChild.tagName().toLowerCase())) {
+                        rows.add(trChild);
+                    }
+                }
+            }
+        }
+        if (rows.isEmpty()) return;
+
+        // 2) 计算最大列数（考虑 colspan）
+        int maxCols = 0;
+        for (Element tr : rows) {
+            int cols = 0;
+            for (Element cell : tr.children()) {
+                String ct = cell.tagName().toLowerCase();
+                if ("td".equals(ct) || "th".equals(ct)) {
+                    cols += Math.max(1, parseColspan(cell));
+                }
+            }
+            maxCols = Math.max(maxCols, cols);
+        }
+        if (maxCols == 0) return;
+
+        // 3) 创建表格
+        XWPFTable table = doc.createTable(rows.size(), maxCols);
+        applyTableStyle(table);
+
+        // 4) 逐行填充单元格
+        for (int i = 0; i < rows.size(); i++) {
+            XWPFTableRow xRow = table.getRow(i);
+            Element tr = rows.get(i);
+            int colIdx = 0;
+
+            for (Element cellEl : tr.children()) {
+                String cellTag = cellEl.tagName().toLowerCase();
+                if (!"td".equals(cellTag) && !"th".equals(cellTag)) continue;
+                if (colIdx >= maxCols) break;
+
+                int colspan = Math.max(1, parseColspan(cellEl));
+                XWPFTableCell xCell = xRow.getCell(colIdx);
+
+                // 设置 colspan
+                if (colspan > 1) {
+                    setCellColspan(xCell, colspan);
+                }
+
+                // 填写单元格内容
+                renderTableCellContent(xCell, cellEl);
+
+                colIdx += colspan;
+            }
+        }
+    }
+
+    /** 解析 colspan 属性值 */
+    private int parseColspan(Element cell) {
+        String val = cell.attr("colspan");
+        if (val == null || val.isBlank()) return 1;
+        try {
+            return Integer.parseInt(val.trim());
+        } catch (NumberFormatException e) {
+            return 1;
+        }
+    }
+
+    /** 设置 XWPFTableCell 的 gridSpan（跨列数） */
+    private void setCellColspan(XWPFTableCell cell, int colspan) {
+        try {
+            var ctTc = cell.getCTTc();
+            var tcPr = ctTc.isSetTcPr() ? ctTc.getTcPr() : ctTc.addNewTcPr();
+            tcPr.addNewGridSpan().setVal(BigInteger.valueOf(colspan));
+        } catch (Exception e) {
+            log.warn("设置 gridSpan={} 失败: {}", colspan, e.getMessage());
+        }
+    }
+
+    /** 为表格应用样式：100% 宽度、黑色细线边框 */
+    private void applyTableStyle(XWPFTable table) {
+        try {
+            var ctTbl = table.getCTTbl();
+            var tblPr = ctTbl.getTblPr() == null ? ctTbl.addNewTblPr() : ctTbl.getTblPr();
+            // 表格宽度 100%（百分比）
+            var tblW = tblPr.getTblW() == null ? tblPr.addNewTblW() : tblPr.getTblW();
+            tblW.setW(BigInteger.valueOf(5000));
+            tblW.setType(org.openxmlformats.schemas.wordprocessingml.x2006.main.STTblWidth.PCT);
+
+            // 边框
+            var borders = tblPr.addNewTblBorders();
+
+            var left = borders.addNewLeft();
+            left.setVal(org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder.SINGLE);
+            left.setSz(BigInteger.valueOf(4));
+            left.setColor("000000");
+
+            var right = borders.addNewRight();
+            right.setVal(org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder.SINGLE);
+            right.setSz(BigInteger.valueOf(4));
+            right.setColor("000000");
+
+            var top = borders.addNewTop();
+            top.setVal(org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder.SINGLE);
+            top.setSz(BigInteger.valueOf(4));
+            top.setColor("000000");
+
+            var bottom = borders.addNewBottom();
+            bottom.setVal(org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder.SINGLE);
+            bottom.setSz(BigInteger.valueOf(4));
+            bottom.setColor("000000");
+
+            var insideH = borders.addNewInsideH();
+            insideH.setVal(org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder.SINGLE);
+            insideH.setSz(BigInteger.valueOf(4));
+            insideH.setColor("000000");
+
+            var insideV = borders.addNewInsideV();
+            insideV.setVal(org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder.SINGLE);
+            insideV.setSz(BigInteger.valueOf(4));
+            insideV.setColor("000000");
+        } catch (Exception e) {
+            log.warn("设置表格边框失败，使用默认样式: {}", e.getMessage());
+        }
+    }
+
+    /** 填充 XWPFTableCell 内容（支持多段落和行内格式） */
+    private void renderTableCellContent(XWPFTableCell cell, Element cellEl) {
+        boolean isHeader = "th".equals(cellEl.tagName().toLowerCase());
+        // 清空默认空白段落
+        cell.removeParagraph(0);
+
+        // 收集单元格中的子节点
+        List<Node> children = cellEl.childNodesCopy();
+        boolean hasBlockChildren = false;
+        for (Node n : children) {
+            if (n instanceof Element e) {
+                String t = e.tagName().toLowerCase();
+                if (Set.of("p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "table").contains(t)) {
+                    hasBlockChildren = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasBlockChildren) {
+            // 纯文本 / 只有行内元素 → 单一段落
+            XWPFParagraph p = cell.addParagraph();
+            setCellParagraphAlignment(p, cellEl);
+            renderInlineContent(p, cellEl);
+            if (isHeader) {
+                for (XWPFRun run : p.getRuns()) {
+                    run.setBold(true);
+                }
+            }
+        } else {
+            // 单元格内包含块级元素 → 分段渲染
+            for (Node child : children) {
+                if (child instanceof TextNode tn) {
+                    String text = tn.text().strip();
+                    if (!text.isEmpty()) {
+                        XWPFParagraph p = cell.addParagraph();
+                        XWPFRun run = p.createRun();
+                        run.setText(text);
+                        run.setFontSize(12);
+                        setRunFont(run, "宋体", "Noto Serif CJK SC");
+                        if (isHeader) run.setBold(true);
+                    }
+                } else if (child instanceof Element e) {
+                    String tag = e.tagName().toLowerCase();
+                    switch (tag) {
+                        case "p" -> {
+                            XWPFParagraph p = cell.addParagraph();
+                            setCellParagraphAlignment(p, e);
+                            renderInlineContent(p, e);
+                            if (isHeader) {
+                                for (XWPFRun run : p.getRuns()) run.setBold(true);
+                            }
+                        }
+                        case "br" -> { /* 忽略 */ }
+                        default -> {
+                            XWPFParagraph p = cell.addParagraph();
+                            renderInlineContent(p, e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** 设置单元格段落对齐方式 */
+    private void setCellParagraphAlignment(XWPFParagraph p, Element el) {
+        String align = el.attr("align");
+        if ((align != null && "center".equalsIgnoreCase(align))
+                || el.attr("style").toLowerCase().contains("text-align:center")) {
+            p.setAlignment(ParagraphAlignment.CENTER);
+        } else if (align != null && "right".equalsIgnoreCase(align)) {
+            p.setAlignment(ParagraphAlignment.RIGHT);
         }
     }
 
@@ -382,7 +579,7 @@ public class DocxExportService {
             XWPFRun run = p.createRun();
             run.setText(prefix + text);
             run.setFontSize(12);
-            run.setFontFamily("宋体");
+            setRunFont(run, "宋体", "Noto Serif CJK SC");
         }
     }
 
@@ -395,7 +592,7 @@ public class DocxExportService {
                     XWPFRun run = p.createRun();
                     run.setText(text);
                     run.setFontSize(12);
-                    run.setFontFamily("宋体");
+                    setRunFont(run, "宋体", "Noto Serif CJK SC");
                 }
             } else if (child instanceof Element inline) {
                 String tag = inline.tagName().toLowerCase();
@@ -412,7 +609,7 @@ public class DocxExportService {
                     case "br"         -> { run.addBreak(); continue; }
                 }
                 run.setFontSize(12);
-                run.setFontFamily("宋体");
+                setRunFont(run, "宋体", "Noto Serif CJK SC");
                 run.setText(text);
             }
         }
@@ -644,5 +841,31 @@ public class DocxExportService {
     /** 粗略判断是否块级标签 */
     private boolean isBlockTag(String tag) {
         return Set.of("div", "section", "article", "blockquote", "pre", "hr", "figure").contains(tag);
+    }
+
+    // ==================== 字体工具 ====================
+
+    /**
+     * 设置 XWPFRun 字体，同时指定中文（East-Asia）回退字体。
+     * <p>
+     * 这样生成的 DOCX 同时保留了 Windows 中文字体名（供 Word 用户使用）
+     * 和 Linux 可用字体（供 LibreOffice PDF 转换使用），避免中文方块乱码。
+     *
+     * @param run           XWPFRun 实例
+     * @param mainFont      主字体（如 "宋体"、"黑体"）
+     * @param eastAsiaFont  East-Asia 回退字体（如 "Noto Serif CJK SC"、"Noto Sans CJK SC"）
+     */
+    private void setRunFont(XWPFRun run, String mainFont, String eastAsiaFont) {
+        try {
+            run.setFontFamily(mainFont);
+            if (eastAsiaFont != null && !eastAsiaFont.isEmpty()) {
+                var rpr = run.getCTR().addNewRPr();
+                var fonts = rpr.addNewRFonts();
+                fonts.setEastAsia(eastAsiaFont);
+            }
+        } catch (Exception e) {
+            // East-Asia 字体设置失败不影响基本渲染
+            log.debug("设置 East-Asia 字体失败: main={}, ea={}, err={}", mainFont, eastAsiaFont, e.getMessage());
+        }
     }
 }

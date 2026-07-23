@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/submissions")
@@ -51,5 +52,16 @@ public class SubmissionController {
     @GetMapping("/thesis/{thesisId}")
     public Result<List<Submission>> getSubmissionHistory(@PathVariable Long thesisId) {
         return Result.ok(submissionService.getSubmissionHistory(thesisId));
+    }
+
+    /**
+     * 获取学生所有提交记录（带论文信息）
+     * GET /api/v1/submissions/records
+     */
+    @GetMapping("/records")
+    @RoleRequired("STUDENT")
+    public Result<List<Map<String, Object>>> getSubmissionRecords(HttpServletRequest request) {
+        Long studentId = (Long) request.getAttribute("userId");
+        return Result.ok(submissionService.getSubmissionRecords(studentId));
     }
 }

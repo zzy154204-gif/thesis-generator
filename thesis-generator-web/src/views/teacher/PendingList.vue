@@ -14,6 +14,12 @@
         <el-table-column prop="title" label="论文标题" min-width="260" show-overflow-tooltip>
           <template #default="{ row }"><span class="link">{{ row.title }}</span></template>
         </el-table-column>
+        <el-table-column label="论文模板" width="150">
+          <template #default="{ row }">
+            <el-tag v-if="row.templateName" size="small" effect="plain">{{ row.templateName }}</el-tag>
+            <span v-else style="color:var(--el-text-color-secondary);font-size:13px">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="studentName" label="学生" width="120" />
         <el-table-column prop="studentId" label="学号" width="120" />
         <el-table-column prop="submittedAt" label="提交时间" width="160">

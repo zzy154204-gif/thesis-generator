@@ -22,4 +22,7 @@ public class RegisterRequest {
     private String role; // STUDENT, TEACHER, ADMIN
 
     private Long collegeId;
+
+    /** 教师工号（教师必填） */
+    private String teacherNo;
 }

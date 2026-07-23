@@ -101,6 +101,20 @@ const router = createRouter({
       component: () => import('@/views/teacher/ReviewDetail.vue'),
       meta: { requiresAuth: true, roles: ['TEACHER'] },
     },
+    {
+      path: '/teacher/review-records',
+      name: 'ReviewRecords',
+      component: () => import('@/views/teacher/ReviewRecords.vue'),
+      meta: { requiresAuth: true, roles: ['TEACHER'] },
+    },
+
+    // ---- 学生 ----
+    {
+      path: '/submission-records',
+      name: 'SubmissionRecords',
+      component: () => import('@/views/student/SubmissionRecords.vue'),
+      meta: { requiresAuth: true },
+    },
 
     // ---- 公共 ----
     {

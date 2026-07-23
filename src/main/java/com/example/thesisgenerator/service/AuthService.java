@@ -45,12 +45,23 @@ public class AuthService {
             throw new BusinessException(400, "不允许注册管理员账号");
         }
 
+        // 教师注册必填教工号和学院
+        if ("TEACHER".equals(request.getRole())) {
+            if (request.getTeacherNo() == null || request.getTeacherNo().isBlank()) {
+                throw new BusinessException(400, "教师注册必须填写教工号");
+            }
+            if (request.getCollegeId() == null) {
+                throw new BusinessException(400, "教师注册必须选择所属学院");
+            }
+        }
+
         User user = new User();
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setRealName(request.getRealName());
         user.setRole(request.getRole());
         user.setCollegeId(request.getCollegeId());
+        user.setTeacherNo("TEACHER".equals(request.getRole()) ? request.getTeacherNo() : null);
         user.setEnabled(true);
 
         user = userRepository.save(user);

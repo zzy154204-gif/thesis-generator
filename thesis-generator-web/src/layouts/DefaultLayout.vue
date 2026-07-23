@@ -42,19 +42,10 @@
           class="nav-menu"
         >
           <template v-for="item in menus" :key="item.path">
-            <el-menu-item v-if="!item.children" :index="item.path">
+            <el-menu-item :index="item.path">
               <el-icon><component :is="item.icon" /></el-icon>
               <span>{{ item.label }}</span>
             </el-menu-item>
-            <el-sub-menu v-else :index="item.path">
-              <template #title>
-                <el-icon><component :is="item.icon" /></el-icon>
-                <span>{{ item.label }}</span>
-              </template>
-              <el-menu-item v-for="c in item.children" :key="c.path" :index="c.path">
-                {{ c.label }}
-              </el-menu-item>
-            </el-sub-menu>
           </template>
         </el-menu>
 
@@ -78,7 +69,7 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { Fold, Expand, Document, Files, Reading, School, ChatLineSquare, User } from '@element-plus/icons-vue'
+import { Fold, Expand, Document, Files, Reading, School, ChatLineSquare, User, List, Clock } from '@element-plus/icons-vue'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -94,12 +85,18 @@ interface NavItem {
 }
 
 const allMenus: NavItem[] = [
+  // ---- 学生 ----
   { path: '/papers', label: '我的论文', icon: Document, roles: ['STUDENT'] },
   { path: '/templates', label: '模板库', icon: Files, roles: ['STUDENT'] },
   { path: '/references', label: '参考文献', icon: Reading, roles: ['STUDENT'] },
-  { path: '/teacher/review', label: '待批阅', icon: ChatLineSquare, roles: ['TEACHER'] },
+  { path: '/submission-records', label: '提交记录', icon: Clock, roles: ['STUDENT'] },
+  // ---- 教师 ----
+  { path: '/teacher/review', label: '待批阅论文', icon: ChatLineSquare, roles: ['TEACHER'] },
+  { path: '/teacher/review-records', label: '批阅记录', icon: List, roles: ['TEACHER'] },
+  // ---- 管理员 ----
   { path: '/admin/colleges', label: '学院管理', icon: School, roles: ['ADMIN'] },
   { path: '/admin/templates', label: '模板管理', icon: Files, roles: ['ADMIN'] },
+  // ---- 公共 ----
   { path: '/profile', label: '个人中心', icon: User },
 ]
 
@@ -107,7 +104,7 @@ const menus = computed(() =>
   allMenus.filter(m => !m.roles || m.roles.includes(auth.role || ''))
 )
 
-/** 当前激活的菜单项：优先匹配路由，若路由不在菜单中则高亮第一项 */
+/** 当前激活的菜单项：按路径前缀匹配 */
 const activePath = computed(() => {
   const matched = menus.value.find(m => route.path.startsWith(m.path))
   return matched ? matched.path : (menus.value[0]?.path || '/papers')
