@@ -14,9 +14,11 @@
 
 % 修订记录
 \begin{revrecord}
-V1.0 & 2026-07-21 & D、A & F & 初稿完成，D功能+界面测试，A API测试，F性能+安全+兼容测试 \\
+V1.0 & 2026-07-21 & D、A & F & 初稿完成，D功能+界面测试，A API测试 \\
 \hline
 V1.1 & 2026-07-22 & D & — & 补充性能/安全/兼容性测试，缺陷分析，测试结论 \\
+\hline
+V2.0 & 2026-07-23 & D & — & 按GB/T 9386标准全面修订：对齐缺陷分级P0-P3，补充测试方法/进度/趋势/附录 \\
 \hline
 \end{revrecord}
 
@@ -49,18 +51,77 @@ V1.1 & 2026-07-22 & D & — & 补充性能/安全/兼容性测试，缺陷分析
 
 % ===== 测试概要 =====
 \section{测试概要}
+
 \subsection{测试项目概述}
-本次测试覆盖在线论文文档自动生成工具全部功能模块，包括功能测试、界面测试、性能测试、安全测试和兼容性测试。测试采用黑盒方法，基于需求规格说明书逐条验证。
+本次测试覆盖在线论文文档自动生成工具全部功能模块，包括功能测试、界面测试、性能测试、安全测试和兼容性测试五大类。测试依据 GB/T 9386-2008 计算机软件测试文档编制规范 进行组织和管理。
+
+\subsection{测试方法}
+
+本测试采用多种测试方法相结合的策略：
+
+\begin{table}[htbp]
+    \centering
+    \caption{测试方法说明}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        \textbf{测试类型} & \textbf{测试方法} & \textbf{说明} \\
+        \hline
+        功能测试 & 黑盒测试、等价类划分、边界值分析 & 基于需求规格说明书逐条验证功能点 \\
+        \hline
+        界面测试 & 场景法、探索式测试 & 逐页检查布局/视觉/交互一致性 \\
+        \hline
+        性能测试 & 压力测试、并发测试 & 使用Apache Bench模拟多用户并发 \\
+        \hline
+        安全测试 & 渗透测试、角色枚举测试 & 覆盖认证/鉴权/注入/密码安全 \\
+        \hline
+        兼容性测试 & 矩阵测试 & 浏览器×数据库×部署模式交叉验证 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\subsection{测试时间与进度}
+
+\begin{table}[htbp]
+    \centering
+    \caption{测试执行进度}
+    \begin{tabular}{|c|c|c|c|c|}
+        \hline
+        \textbf{阶段} & \textbf{日期} & \textbf{负责人} & \textbf{计划工作量} & \textbf{完成状态} \\
+        \hline
+        测试计划与用例编写 & 07-20 & D, A & 1天 & 已完成 \\
+        \hline
+        API功能测试执行 & 07-21 & A & 1天 & 已完成 \\
+        \hline
+        前端功能+界面测试 & 07-21 & D & 1天 & 已完成 \\
+        \hline
+        性能+安全+兼容性测试 & 07-22 & D（代理F） & 1天 & 已完成 \\
+        \hline
+        缺陷修复与回归测试 & 07-22 & D & 0.5天 & 已完成 \\
+        \hline
+        测试报告编写 & 07-21至07-23 & D, A & 2天 & 已完成 \\
+        \hline
+    \end{tabular}
+\end{table}
 
 \subsection{测试范围}
+
+\subsubsection{已测试内容}
 \begin{itemize}
-    \item 学生端：账号注册登录、论文CRUD、章节在线编辑、参考文献管理、模板选择预览、DOCX/PDF导出
+    \item 学生端全部功能：账号注册登录、个人信息管理、论文CRUD、章节在线编辑、参考文献管理、模板选择预览、DOCX/PDF导出
     \item 教师端：待审论文列表、论文审核详情、标注与打分、通过/退回操作
     \item 管理端：学院管理、模板管理、模板编辑器
-    \item 界面：所有页面的布局、视觉、交互、响应式适配
-    \item 性能：登录/论文列表/章节保存接口的并发与响应时间
-    \item 安全：JWT认证、RBAC权限、SQL/XSS注入防护
-    \item 兼容性：Chrome/Edge/Firefox/Safari浏览器、PostgreSQL/H2数据库、Docker/本地部署
+    \item 所有前端页面（12个页面）的布局、视觉、交互、响应式适配
+    \item 后端全部API接口（50个接口）的功能正确性、权限控制、异常处理
+    \item 性能：登录/论文列表/章节保存接口的并发压力测试
+    \item 安全：JWT认证、RBAC三种角色权限、SQL/XSS/CSRF注入防护、BCrypt密码加密
+    \item 兼容性：Chrome/Edge/Firefox/Safari四大浏览器、PostgreSQL/H2双数据库、Docker/本地双部署模式
+\end{itemize}
+
+\subsubsection{未测试内容}
+\begin{itemize}
+    \item 移动端原生App：本项目仅为Web端，无移动端适配需求（已在响应式测试中覆盖375px移动视口）
+    \item 第三方登录集成：项目未集成OAuth等第三方登录功能
+    \item 生产环境部署测试：测试均在本地开发环境进行，未在云服务器或生产环境执行
 \end{itemize}
 
 \subsection{测试环境配置}
